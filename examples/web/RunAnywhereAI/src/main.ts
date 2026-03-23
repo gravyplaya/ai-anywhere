@@ -91,8 +91,9 @@ async function main(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function initializeSDK(): Promise<void> {
-  // Try to import and initialize the SDK
-  // This is optional -- the demo app works without WASM for UI development
+  // Flag to track if initialization was successful
+  let successfullyInitialized = false;
+
   try {
     const { RunAnywhere, SDKEnvironment } = await import(
       '../../../../sdk/runanywhere-web/packages/core/src/index'
@@ -101,7 +102,6 @@ async function initializeSDK(): Promise<void> {
     await RunAnywhere.initialize({
       environment: SDKEnvironment.Development,
       debug: true,
-      // acceleration: 'auto' is the default — detects WebGPU automatically
     });
 
     // Import and register backends
@@ -110,24 +110,40 @@ async function initializeSDK(): Promise<void> {
     await LlamaCPP.register();
     await ONNX.register();
 
-    // Attempt to restore previously chosen local storage directory
+    successfullyInitialized = true;
+
+    // ... rest of the successful init ...
     const localRestored = await RunAnywhere.restoreLocalStorage();
-    if (localRestored) {
-      console.log('[RunAnywhere] Local storage restored:', RunAnywhere.localStorageDirectoryName);
-    }
-
     console.log(
-      '[RunAnywhere] SDK initialized, version:', RunAnywhere.version,
-      '| acceleration:', LlamaCPP.accelerationMode,
-      '| local storage:', localRestored ? RunAnywhere.localStorageDirectoryName : 'OPFS',
+      '[RunAnywhere] SDK initialized | acceleration:', LlamaCPP.accelerationMode,
+      '| local storage:', localRestored ? 'Restored' : 'OPFS',
     );
-
-    // Show an acceleration badge so the user knows which backend is active
     showAccelerationBadge(LlamaCPP.accelerationMode);
   } catch (err) {
-    // SDK not built or WASM not available -- continue in demo mode
-    console.warn('[RunAnywhere] SDK not available, running in demo mode:', err);
+    const reason = err instanceof Error ? err.message : String(err);
+    console.warn('[RunAnywhere] Backend initialization failed:', reason);
+
+    // If it's a 404 for WASM, add a more helpful suggestion
+    let suggestion = 'Running in UI-only demo mode.';
+    if (reason.includes('404') || reason.includes('fetch') || reason.includes('module')) {
+      suggestion = 'WASM backends not found. Run "sdk/runanywhere-web/scripts/build-web.sh --setup" to build them.';
+    }
+
+    showWasmWarning(suggestion);
   }
+}
+
+/**
+ * Show a warning banner at the top of the screen if the WASM backends are missing.
+ */
+function showWasmWarning(message: string): void {
+  const banner = document.createElement('div');
+  banner.className = 'init-warning-banner';
+  banner.innerHTML = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <span><strong>Backend Unavailable:</strong> ${message}</span>
+  `;
+  document.body.appendChild(banner);
 }
 
 /**

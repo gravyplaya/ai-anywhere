@@ -527,7 +527,7 @@ async function sendStreaming(text: string, loaded: ModelInfo): Promise<void> {
   }
 
   const { stream, result: resultPromise, cancel } = await TextGeneration.generateStream(text, {
-    maxTokens: 512,
+    maxTokens: 2048,
     temperature: 0.7,
   });
   cancelGeneration = cancel;
@@ -542,10 +542,31 @@ async function sendStreaming(text: string, loaded: ModelInfo): Promise<void> {
     modelId: loaded.id,
   };
   messages.push(assistantMsg);
-  const { bubbleEl, rowEl } = renderStreamingBubble(assistantMsg);
+  const { bubbleEl, thinkingWrapper, rowEl } = renderStreamingBubble(assistantMsg);
 
+  let fullText = '';
   for await (const token of stream) {
-    assistantMsg.content += token;
+    fullText += token;
+
+    // Use helper to parse thinking part out of fullText
+    const { thinking, content } = splitThinking(fullText);
+    assistantMsg.thinking = thinking || undefined;
+    assistantMsg.content = content;
+
+    // Update thinking section if it exists
+    if (assistantMsg.thinking && thinkingWrapper) {
+      const isStillThinking = !assistantMsg.content;
+      thinkingWrapper.innerHTML = `
+        <div class="thinking-section ${isStillThinking ? 'expanded' : ''}" onclick="this.classList.toggle('expanded')">
+          <div class="thinking-header">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 1 1 7.072 0l-.548.547A3.374 3.374 0 0 0 12 18.469V19"/></svg>
+            <span>Thinking...</span>
+          </div>
+          <div class="thinking-content" ${isStillThinking ? 'style="display:block;"' : ''}>${escapeHtml(assistantMsg.thinking)}</div>
+        </div>
+      `;
+    }
+
     bubbleEl.innerHTML = renderMarkdown(assistantMsg.content);
     scrollToBottom();
     await new Promise(r => setTimeout(r, 12));
@@ -584,7 +605,7 @@ async function sendWithToolCalling(text: string, loaded: ModelInfo): Promise<voi
     maxToolCalls: 3,
     autoExecute: true,
     temperature: 0.3,
-    maxTokens: 1024,
+    maxTokens: 2048,
   });
 
   hideTypingIndicator();
@@ -611,10 +632,13 @@ async function sendWithToolCalling(text: string, loaded: ModelInfo): Promise<voi
     };
   });
 
+  const { thinking, content } = splitThinking(result.text);
+
   const assistantMsg: ChatMessage = {
     id: crypto.randomUUID(),
     role: 'assistant',
-    content: result.text,
+    content,
+    thinking: thinking || undefined,
     timestamp: Date.now(),
     modelId: loaded.id,
     toolCalls: toolCallInfos.length > 0 ? toolCallInfos : undefined,
@@ -721,7 +745,11 @@ function renderMessage(msg: ChatMessage): void {
 /**
  * Create a streaming assistant bubble (starts empty, tokens appended later).
  */
-function renderStreamingBubble(msg: ChatMessage): { bubbleEl: HTMLElement; rowEl: HTMLElement } {
+function renderStreamingBubble(msg: ChatMessage): {
+  bubbleEl: HTMLElement;
+  thinkingWrapper: HTMLElement;
+  rowEl: HTMLElement;
+} {
   const row = document.createElement('div');
   row.className = 'message-row assistant';
 
@@ -733,14 +761,16 @@ function renderStreamingBubble(msg: ChatMessage): { bubbleEl: HTMLElement; rowEl
       ${escapeHtml(displayName)}
     </div>`;
   }
+  html += `<div class="thinking-wrapper" id="streaming-thinking-${msg.id}"></div>`;
   html += `<div class="message-bubble assistant" id="streaming-bubble-${msg.id}"></div>`;
 
   row.innerHTML = html;
   messagesEl.appendChild(row);
   scrollToBottom();
 
+  const thinkingWrapper = row.querySelector<HTMLElement>(`#streaming-thinking-${msg.id}`)!;
   const bubbleEl = row.querySelector<HTMLElement>(`#streaming-bubble-${msg.id}`)!;
-  return { bubbleEl, rowEl: row };
+  return { bubbleEl, thinkingWrapper, rowEl: row };
 }
 
 /**
@@ -816,8 +846,35 @@ function escapeHtml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function splitThinking(text: string): { thinking: string; content: string } {
+  if (text.includes('<think>')) {
+    const parts = text.split('</think>');
+    if (parts.length > 1) {
+      return {
+        thinking: parts[0].replace('<think>', '').trim(),
+        content: parts.slice(1).join('</think>').trim(),
+      };
+    } else {
+      return {
+        thinking: text.replace('<think>', '').trim(),
+        content: '',
+      };
+    }
+  }
+  return { thinking: '', content: text };
+}
+
 function renderMarkdown(text: string): string {
-  return escapeHtml(text)
+  // If text still contains <think> tags (e.g. from older messages or unusual formatting),
+  // we try to handle it, but splitThinking is the primary way we handle this now.
+  let content = text;
+  if (text.includes('<think>') && text.includes('</think>')) {
+    content = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  } else if (text.includes('<think>')) {
+    content = text.replace(/<think>[\s\S]*/g, '').trim();
+  }
+
+  return escapeHtml(content)
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
     .replace(/`(.*?)`/g, '<code class="inline-code">$1</code>')

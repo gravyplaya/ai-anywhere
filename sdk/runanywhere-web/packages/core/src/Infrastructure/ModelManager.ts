@@ -181,6 +181,18 @@ class ModelManagerImpl {
   getTTSModels(): ManagedModel[] { return this.registry.getTTSModels(); }
   getVADModels(): ManagedModel[] { return this.registry.getVADModels(); }
 
+  /** Check if a backend loader is registered for a specific model category. */
+  hasLoader(category: ModelCategory): boolean {
+    switch (category) {
+      case ModelCategory.Language: return this.llmLoader !== null;
+      case ModelCategory.SpeechRecognition: return this.sttLoader !== null;
+      case ModelCategory.SpeechSynthesis: return this.ttsLoader !== null;
+      case ModelCategory.Audio: return this.vadLoader !== null;
+      case ModelCategory.Multimodal: return this.vlmLoader !== null;
+      default: return false;
+    }
+  }
+
   getLoadedModel(category?: ModelCategory): ManagedModel | null {
     if (category) {
       const id = this.loadedByCategory.get(category);

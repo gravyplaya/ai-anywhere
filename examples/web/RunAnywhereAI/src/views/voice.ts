@@ -403,7 +403,7 @@ async function runPipeline(audioData: Float32Array): Promise<void> {
     const responseEl = container.querySelector('#voice-response');
 
     await pipeline.processTurn(audioData, {
-      maxTokens: 150,
+      maxTokens: 1024,
       temperature: 0.7,
       systemPrompt:
         'You are a helpful voice assistant. Keep responses concise — 1-3 sentences. Be conversational and friendly.',

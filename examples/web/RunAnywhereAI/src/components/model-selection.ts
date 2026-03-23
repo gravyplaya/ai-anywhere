@@ -149,12 +149,36 @@ function renderModelList(models: ModelInfo[]): void {
 
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
+      const model = ModelManager.getModels().find((m) => m.id === modelId);
+
       if (action === 'download') {
-        await handleDownload(modelId);
+        const success = await handleDownload(modelId);
+        if (success) {
+          // Auto-load after download completes
+          const updatedModel = ModelManager.getModels().find((m) => m.id === modelId);
+          if (updatedModel && updatedModel.status === 'downloaded') {
+            const loadSuccess = await ModelManager.loadModel(modelId, { coexist: sheetOptions.coexist });
+            if (loadSuccess) {
+              showToast(`${updatedModel.name} Ready`);
+              closeSheet();
+            }
+          }
+        }
+      } else if (action === 'delete') {
+        if (confirm(`Are you sure you want to delete ${model?.name}?`)) {
+          await ModelManager.deleteModel(modelId);
+          showToast(`Deleted ${model?.name}`);
+        }
       } else if (action === 'load') {
+        // Check if the required backend is registered
+        if (model && !ModelManager.hasLoader(model.modality)) {
+          showToast(`Backend for ${model.framework} not initialized. Check console for errors.`, 'error');
+          return;
+        }
+
         const success = await ModelManager.loadModel(modelId, { coexist: sheetOptions.coexist });
         if (success) {
-          showToast(`${ModelManager.getModels().find((m) => m.id === modelId)?.name ?? 'Model'} Ready`);
+          showToast(`${model?.name ?? 'Model'} Ready`);
           closeSheet();
         }
       }
@@ -166,13 +190,13 @@ function renderModelList(models: ModelInfo[]): void {
 // Download with Quota Check + Eviction Dialog
 // ---------------------------------------------------------------------------
 
-async function handleDownload(modelId: string): Promise<void> {
+async function handleDownload(modelId: string): Promise<boolean> {
   const check = await ModelManager.checkDownloadFit(modelId);
 
   if (check.fits) {
     // Enough space — download directly
     await ModelManager.downloadModel(modelId);
-    return;
+    return true;
   }
 
   // Not enough space — show eviction dialog
@@ -182,7 +206,7 @@ async function handleDownload(modelId: string): Promise<void> {
   if (check.evictionCandidates.length === 0) {
     // No candidates to evict — inform user
     showToast('Not enough storage and no models to remove', 'warning');
-    return;
+    return false;
   }
 
   const selectedIds = await showEvictionDialog(
@@ -198,7 +222,7 @@ async function handleDownload(modelId: string): Promise<void> {
 
   if (!selectedIds || selectedIds.length === 0) {
     showToast('Download cancelled', 'info');
-    return;
+    return false;
   }
 
   // Delete selected models, then download
@@ -208,6 +232,7 @@ async function handleDownload(modelId: string): Promise<void> {
 
   showToast(`Freed storage, downloading ${model.name}...`, 'info');
   await ModelManager.downloadModel(modelId);
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -220,8 +245,17 @@ function getActionButton(model: ModelInfo): string {
       return `<button class="model-action-btn download" data-action="download" data-model-id="${model.id}">Download</button>`;
     case 'downloading':
       return `<button class="model-action-btn" disabled>${Math.round((model.downloadProgress ?? 0) * 100)}%</button>`;
-    case 'downloaded':
-      return `<button class="model-action-btn load" data-action="load" data-model-id="${model.id}">Load</button>`;
+    case 'downloaded': {
+      const isAvailable = ModelManager.hasLoader(model.modality);
+      return `
+        <div class="model-actions-row">
+          <button class="btn-delete" data-action="delete" data-model-id="${model.id}" title="Delete model">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+          </button>
+          <button class="model-action-btn load ${!isAvailable ? 'disabled' : ''}" data-action="load" data-model-id="${model.id}">${isAvailable ? 'Load' : 'Build Required'}</button>
+        </div>
+      `;
+    }
     case 'loading':
       return `<button class="model-action-btn" disabled>Loading...</button>`;
     case 'loaded':

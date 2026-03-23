@@ -243,3 +243,34 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-tertiary);
 }
+
+/* =============================================================================
+ * Initialization Warning Banner
+ * ============================================================================= */
+.init-warning-banner {
+  position: sticky;
+  top: 0;
+  z-index: 2000;
+  background-color: var(--color-yellow);
+  color: #000;
+  padding: var(--space-sm) var(--space-lg);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--font-size-xs);
+  box-shadow: 0 2px 4px var(--shadow-default);
+  animation: slideDown 0.3s ease-out;
+}
+
+.init-warning-banner svg {
+  flex-shrink: 0;
+}
+
+.init-warning-banner strong {
+  margin-right: 4px;
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}

@@ -32,13 +32,13 @@ const REGISTERED_MODELS: CompactModelDef[] = [
   // LLM models (llama.cpp GGUF)
   // =========================================================================
   {
-    id: 'smollm2-360m-q8_0',
-    name: 'SmolLM2 360M Q8_0',
-    repo: 'prithivMLmods/SmolLM2-360M-GGUF',
-    files: ['SmolLM2-360M.Q8_0.gguf'],
+    id: 'LFM2.5-1.2B-Thinking-Q8_0',
+    name: 'LFM 2.5 Thinking',
+    repo: 'LiquidAI/LFM2.5-1.2B-Thinking-GGUF',
+    files: ['LFM2.5-1.2B-Thinking-Q8_0.gguf'],
     framework: LLMFramework.LlamaCpp,
     modality: ModelCategory.Language,
-    memoryRequirement: 500_000_000,
+    memoryRequirement: 1_500_000_000,
   },
   {
     id: 'qwen2.5-0.5b-instruct-q6_k',
@@ -50,13 +50,13 @@ const REGISTERED_MODELS: CompactModelDef[] = [
     memoryRequirement: 600_000_000,
   },
   {
-    id: 'lfm2-350m-q4_k_m',
-    name: 'LFM2 350M Q4_K_M',
-    repo: 'LiquidAI/LFM2-350M-GGUF',
-    files: ['LFM2-350M-Q4_K_M.gguf'],
+    id: 'LFM2.5-1.2B-Instruct-Q8_0',
+    name: 'LFM 2.5',
+    repo: 'LiquidAI/LFM2.5-1.2B-Instruct-GGUF',
+    files: ['LFM2.5-1.2B-Instruct-Q8_0.gguf'],
     framework: LLMFramework.LlamaCpp,
     modality: ModelCategory.Language,
-    memoryRequirement: 250_000_000,
+    memoryRequirement: 1_500_000_000,
   },
   {
     id: 'lfm2-350m-q8_0',
