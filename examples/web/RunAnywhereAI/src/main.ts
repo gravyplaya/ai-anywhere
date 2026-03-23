@@ -34,7 +34,10 @@ async function ensureCrossOriginIsolation(): Promise<void> {
     return;
   }
 
-  const registration = await navigator.serviceWorker.register('/coi-serviceworker.js');
+  // Check for the consolidated PWA/COI service worker
+  const registration = await navigator.serviceWorker.register('/sw.js', {
+    type: 'module',
+  });
 
   // If the SW is already active and controlling this page, COI should be
   // enabled. If we're still not isolated, something else is wrong.

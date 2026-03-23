@@ -2,6 +2,7 @@ import { defineConfig, type Plugin } from 'vite';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { VitePWA } from 'vite-plugin-pwa';
 
 // __dirname is not available in ESM; derive it from import.meta.url
 const __dir = path.dirname(fileURLToPath(import.meta.url));
@@ -49,7 +50,51 @@ function copyWasmPlugin(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [copyWasmPlugin()],
+  plugins: [
+    copyWasmPlugin(),
+    VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      registerType: 'autoUpdate',
+      injectRegister: null,
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,wasm}'],
+        maximumFileSizeToCacheInBytes: 50 * 1024 * 1024, // 50MB for WASM
+      },
+      manifest: {
+        name: 'RunAnywhere AI',
+        short_name: 'RunAnywhere',
+        description: 'Your private, on-device AI assistant.',
+        theme_color: '#FF5500',
+        background_color: '#0A0A0A',
+        display: 'standalone',
+        orientation: 'portrait',
+        icons: [
+          {
+            src: 'pwa-192x192.png',
+            sizes: '192x192',
+            type: 'image/png',
+          },
+          {
+            src: 'pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+          },
+          {
+            src: 'pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any maskable',
+          },
+        ],
+      },
+      devOptions: {
+        enabled: true,
+        type: 'module',
+      },
+    }),
+  ],
   resolve: {
     alias: {
       // Ensure all packages resolve to the same source modules during development.

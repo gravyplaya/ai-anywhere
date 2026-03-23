@@ -1,14 +1,20 @@
-/**
- * Cross-Origin Isolation Service Worker
- *
- * Enables SharedArrayBuffer on browsers that don't support COEP: credentialless
- * (Safari/WebKit). This is required for multi-threaded WASM (pthreads).
- *
- * How it works:
- * - Intercepts navigation responses and injects COOP + COEP headers
- * - Intercepts cross-origin responses and injects CORP header
- * - On first install, claims all clients so it activates immediately
- */
+/// <reference lib="webworker" />
+import { precacheAndRoute } from 'workbox-precaching';
+
+declare const self: ServiceWorkerGlobalScope & {
+  __WB_MANIFEST: any[];
+};
+
+// ---------------------------------------------------------------------------
+// Precaching
+// ---------------------------------------------------------------------------
+
+precacheAndRoute(self.__WB_MANIFEST);
+
+// ---------------------------------------------------------------------------
+// Cross-Origin Isolation (COI) logic
+// Adapted from coi-serviceworker.js
+// ---------------------------------------------------------------------------
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -40,6 +46,7 @@ self.addEventListener('fetch', (event) => {
     );
   } else if (request.url.startsWith(self.location.origin)) {
     // Same-origin requests: pass through unchanged
+    // But we might need to handle WASM files specifically if they are large or need special headers
     return;
   } else {
     // Cross-origin requests: re-fetch and inject CORP header
