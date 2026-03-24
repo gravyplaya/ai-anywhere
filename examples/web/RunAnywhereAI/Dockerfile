@@ -6,10 +6,10 @@ WORKDIR /app
 COPY . .
 
 # Install dependencies and build the web app
-RUN npm install -g pnpm && \
-    cd examples/web/RunAnywhereAI && \
-    pnpm install && \
-    pnpm build
+RUN npm install -g pnpm
+# We are now at the repo root. Move to the app folder to build.
+WORKDIR /app/examples/web/RunAnywhereAI
+RUN pnpm install && pnpm build
 
 # Serve Stage
 FROM nginx:alpine
