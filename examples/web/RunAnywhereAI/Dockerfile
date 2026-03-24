@@ -7,7 +7,7 @@ COPY . .
 
 # Install dependencies and build the web app
 RUN npm install -g pnpm && \
-    cd examples/web/RunAnywhereAI && \
+    cd ./examples/web/RunAnywhereAI && \
     pnpm install && \
     pnpm build
 
