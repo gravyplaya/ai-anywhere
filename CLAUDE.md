@@ -24,7 +24,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Overview
 
-This repository contains cross-platform SDKs for the RunAnywhere on-device AI platform. The platform provides intelligent routing between on-device and cloud AI models to optimize for cost and privacy.
+This repository contains cross-platform SDKs for the TavonnAI on-device AI platform. The platform provides intelligent routing between on-device and cloud AI models to optimize for cost and privacy.
 
 ### SDK Implementations
 - **Kotlin Multiplatform SDK** (`sdk/runanywhere-kotlin/`) - Cross-platform SDK supporting JVM, Android, and Native platforms

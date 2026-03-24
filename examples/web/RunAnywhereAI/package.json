@@ -2,7 +2,7 @@
   "name": "runanywhere-web-demo",
   "private": true,
   "version": "0.1.0",
-  "description": "RunAnywhere Web SDK Demo App",
+  "description": "TavonnAI Web Demo App",
   "type": "module",
   "scripts": {
     "dev": "vite",

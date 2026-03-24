@@ -197,7 +197,7 @@ function updateStorageLocationUI(): void {
     reauthBtn.style.display = '';
   } else {
     label.innerHTML = '<strong>Browser Storage (OPFS)</strong>'
-      + `<br><span style="font-size:0.75rem;opacity:0.5">Sandboxed browser storage — not visible in Finder. Use "Choose Storage Folder" for a real path.</span>`;
+      + `<br><span style="font-size:0.75rem;opacity:0.5">Sandboxed browser storage — not visible in Finder - 2GB max size. Use "Choose Storage Folder" for local device storage.</span>`;
     label.style.color = '';
     reauthBtn.style.display = 'none';
   }

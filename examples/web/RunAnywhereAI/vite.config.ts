@@ -63,8 +63,8 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 50 * 1024 * 1024, // 50MB for WASM
       },
       manifest: {
-        name: 'RunAnywhere AI',
-        short_name: 'RunAnywhere',
+        name: 'TavonnAI',
+        short_name: 'TavonnAI',
         description: 'Your private, on-device AI assistant.',
         theme_color: '#FF5500',
         background_color: '#0A0A0A',

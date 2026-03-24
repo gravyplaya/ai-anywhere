@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="examples/logo.svg" alt="RunAnywhere Logo" width="140"/>
+  <img src="examples/logo.svg" alt="TavonnAI Logo" width="140"/>
 </p>
 
-<h1 align="center">RunAnywhere</h1>
+<h1 align="center">TavonnAI</h1>
 
 <p align="center">
   <strong>On-device AI for every platform.</strong><br/>
@@ -61,9 +61,9 @@
 
 ---
 
-## What is RunAnywhere?
+## What is TavonnAI?
 
-RunAnywhere lets you add AI features to your app that run entirely on-device:
+TavonnAI lets you add AI features to your app that run entirely on-device:
 
 - **LLM Chat** — Llama, Mistral, Qwen, SmolLM, and more
 - **Speech-to-Text** — Whisper-powered transcription

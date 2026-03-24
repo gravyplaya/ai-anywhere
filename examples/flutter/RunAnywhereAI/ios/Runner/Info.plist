@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>RunAnywhere AI</string>
+	<string>TavonnAI</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -27,7 +27,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>RunAnywhere AI needs access to your camera for vision language model features to analyze images.</string>
+	<string>TavonnAI needs access to your camera for vision language model features to analyze images.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This app needs microphone access for voice assistant features.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

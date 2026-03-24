@@ -47,7 +47,7 @@ const REGISTERED_MODELS: CompactModelDef[] = [
     files: ['LFM2.5-1.2B-Instruct-Heretic.i1-Q4_K_M.gguf'],
     framework: LLMFramework.LlamaCpp,
     modality: ModelCategory.Language,
-    memoryRequirement: 800_000_000,
+    memoryRequirement: 697_000_000,
   },
   {
     id: 'Nidum-Llama-3.2-3B-Uncensored',

@@ -1,5 +1,5 @@
 /**
- * RunAnywhere AI - Web Demo Application
+ * TavonnAI - Web Demo Application
  *
  * Full-featured demo matching the iOS example app.
  * 5-tab navigation: Chat, Vision, Voice, More, Settings.
@@ -180,7 +180,7 @@ function showLoadingScreen(): void {
         </defs>
         <circle cx="50" cy="50" r="45" fill="url(#logo-grad)" opacity="0.15"/>
         <circle cx="50" cy="50" r="30" fill="url(#logo-grad)" opacity="0.3"/>
-        <text x="50" y="58" text-anchor="middle" fill="url(#logo-grad)" font-size="28" font-weight="bold" font-family="-apple-system, system-ui, sans-serif">RA</text>
+        <text x="50" y="58" text-anchor="middle" fill="url(#logo-grad)" font-size="28" font-weight="bold" font-family="-apple-system, system-ui, sans-serif">TA</text>
       </svg>
     </div>
     <div class="loading-text">

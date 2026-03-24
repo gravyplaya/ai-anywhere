@@ -1,5 +1,5 @@
 /**
- * RunAnywhere AI - Web Demo App Shell
+ * TavonnAI - Web Demo App Shell
  *
  * 7-tab navigation:
  * Chat | Vision | Voice | Transcribe | Speak | Storage | Settings
