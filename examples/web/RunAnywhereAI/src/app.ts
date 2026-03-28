@@ -1,8 +1,8 @@
 /**
  * TavonnAI - Web Demo App Shell
  *
- * 7-tab navigation:
- * Chat | Vision | Voice | Transcribe | Speak | Storage | Settings
+ * 6-tab navigation:
+ * Chat | Vision | Voice | Transcribe | Speak | Settings
  */
 
 import { initChatTab } from './views/chat';
@@ -10,9 +10,9 @@ import { initVisionTab } from './views/vision';
 import { initVoiceTab } from './views/voice';
 import { initTranscribeTab } from './views/transcribe';
 import { initSpeakTab } from './views/speak';
-import { initStorageTab } from './views/storage';
 import { initSettingsTab } from './views/settings';
 import { ModelManager, ModelCategory } from './services/model-manager';
+import { createOnlineToggle } from './components/online-toggle';
 
 // ---------------------------------------------------------------------------
 // Tab Lifecycle
@@ -65,11 +65,6 @@ const TABS: TabDef[] = [
     icon: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>',
   },
   {
-    id: 'storage',
-    label: 'Storage',
-    icon: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
-  },
-  {
     id: 'settings',
     label: 'Settings',
     icon: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
@@ -118,6 +113,7 @@ export function buildAppShell(): void {
   });
 
   app.appendChild(tabContent);
+  app.appendChild(createOnlineToggle());
   app.appendChild(tabBar);
 
   // Initialize all tab views, capturing lifecycle callbacks
@@ -126,7 +122,6 @@ export function buildAppShell(): void {
   tabLifecycles[2] = initVoiceTab(document.getElementById('tab-voice')!);
   tabLifecycles[3] = initTranscribeTab(document.getElementById('tab-transcribe')!);
   tabLifecycles[4] = initSpeakTab(document.getElementById('tab-speak')!);
-  tabLifecycles[5] = initStorageTab(document.getElementById('tab-storage')!);
   initSettingsTab(document.getElementById('tab-settings')!);
 
   // Activate default tab
@@ -144,7 +139,6 @@ const TAB_MODEL_CATEGORY: Record<string, ModelCategory | null> = {
   voice: ModelCategory.Language,        // voice agent uses LLM + STT + TTS
   transcribe: ModelCategory.SpeechRecognition,
   speak: ModelCategory.SpeechSynthesis,
-  storage: null,
   settings: null,
 };
 

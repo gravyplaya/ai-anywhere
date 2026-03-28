@@ -1,6 +1,6 @@
-# Contributing to RunAnywhere SDKs
+# Contributing to RunAnywhere SDK
 
-Thank you for your interest in contributing to RunAnywhere SDKs! We welcome contributions from the community and are grateful for your help in making our SDKs better.
+Thank you for your interest in contributing to RunAnywhere SDK! We welcome contributions from the community and are grateful for your help in making our SDK better.
 
 ## 📋 Table of Contents
 
@@ -35,15 +35,8 @@ By participating in this project, you are expected to uphold our code of conduct
 
 ### Prerequisites
 
-**For Android Development:**
-- Android Studio Arctic Fox or later
-- JDK 11 or later
-- Android SDK with API level 24+
-
-**For iOS Development:**
-- Xcode 15.0+
-- Swift 5.9+
-- macOS 10.15+
+**For Web Development:**
+- Node.js 18+ and npm
 
 ### Environment Setup
 
@@ -53,16 +46,10 @@ By participating in this project, you are expected to uphold our code of conduct
    pre-commit install
    ```
 
-2. **Android SDK Setup:**
+2. **Web SDK Setup:**
    ```bash
-   cd sdk/runanywhere-kotlin/
-   ./scripts/sdk.sh android
-   ```
-
-3. **iOS SDK Setup:**
-   ```bash
-   cd sdk/runanywhere-swift/
-   swift build
+   cd sdk/runanywhere-web/
+   npm install
    ```
 
 ## 🔧 Making Changes
@@ -97,8 +84,8 @@ We follow the [Conventional Commits](https://www.conventionalcommits.org/) speci
 
 **Examples:**
 ```
-feat(android): add cost tracking to generation results
-fix(ios): resolve memory leak in model loading
+feat(web): add streaming support for LLM responses
+fix(core): resolve type error in model loading
 docs: update README with new API examples
 ```
 
@@ -108,15 +95,9 @@ docs: update README with new API examples
 2. **Add or update tests** for your changes
 3. **Run the test suite** to ensure nothing is broken:
    ```bash
-   # Android
-   cd sdk/runanywhere-kotlin/
-   ./scripts/sdk.sh test-android
-   ./scripts/sdk.sh lint
-
-   # iOS
-   cd sdk/runanywhere-swift/
-   swift test
-   swiftlint
+   cd sdk/runanywhere-web/
+   npm run typecheck
+   npm run build
    ```
 4. **Commit your changes** with a clear commit message
 5. **Push to your fork**:
@@ -138,20 +119,6 @@ docs: update README with new API examples
 
 ## 🎨 Code Style
 
-### Android (Kotlin)
-
-- Follow [Kotlin coding conventions](https://kotlinlang.org/docs/coding-conventions.html)
-- Use 4 spaces for indentation
-- Maximum line length: 120 characters
-- Run `./gradlew ktlintFormat` to auto-format code
-
-### iOS (Swift)
-
-- Follow [Swift API Design Guidelines](https://swift.org/documentation/api-design-guidelines/)
-- Use 4 spaces for indentation
-- Maximum line length: 120 characters
-- Run `swiftlint` to check style compliance
-
 ### General Guidelines
 
 - **Use meaningful names** for variables, functions, and classes
@@ -160,32 +127,26 @@ docs: update README with new API examples
 - **Avoid deep nesting** - prefer early returns and guard clauses
 - **Keep functions small** and focused on a single responsibility
 
+### Web (TypeScript)
+
+- Follow standard TypeScript conventions and best practices
+- Use consistent formatting enforced by the project's configured linter/formatter
+- Prefer strict type safety — avoid `any` where possible
+- Run `npm run typecheck` and `npm run build` before submitting changes
+
 ## 🧪 Testing
 
 ### Writing Tests
 
 - **Unit tests** for business logic and utilities
 - **Integration tests** for API interactions
-- **UI tests** for critical user flows (example apps)
 
 ### Running Tests
 
 ```bash
-# Android SDK tests
-cd sdk/runanywhere-kotlin/
-./scripts/sdk.sh test-android
-
-# iOS SDK tests
-cd sdk/runanywhere-swift/
-swift test
-
-# Android example app tests
-cd examples/android/RunAnywhereAI/
-./gradlew test
-
-# iOS example app tests
-cd examples/ios/RunAnywhereAI/
-xcodebuild test -scheme RunAnywhereAI -destination 'platform=iOS Simulator,name=iPhone 15'
+cd sdk/runanywhere-web/
+npm run typecheck
+npm run build
 ```
 
 ### Test Coverage
@@ -254,4 +215,4 @@ Contributors will be recognized in our:
 - Release notes for significant contributions
 - Community spotlights
 
-Thank you for contributing to RunAnywhere SDKs! 🚀
+Thank you for contributing to RunAnywhere SDK! 🚀

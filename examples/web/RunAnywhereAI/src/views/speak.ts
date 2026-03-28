@@ -5,7 +5,9 @@
 
 import type { TabLifecycle } from '../app';
 import { ModelManager, ModelCategory, type ModelInfo } from '../services/model-manager';
-import { showModelSelectionSheet } from '../components/model-selection';
+import { showModelSelectionSheet, onOnlineModelSelect } from '../components/model-selection';
+import { isOnline, getOnlineModels, onOnlineModeChange } from '../services/online-mode';
+import { synthesize as veniceSynthesize } from '../services/venice-client';
 
 let container: HTMLElement;
 
@@ -22,6 +24,7 @@ const SURPRISE_TEXTS = [
 
 let ttsIsSpeaking = false;
 let ttsPlayback: import('../../../../../sdk/runanywhere-web/packages/core/src/Infrastructure/AudioPlayback').AudioPlayback | null = null;
+let selectedOnlineTTSModelId: string | null = null;
 
 // ---------------------------------------------------------------------------
 // Init
@@ -77,6 +80,31 @@ export function initSpeakTab(el: HTMLElement): TabLifecycle {
   ModelManager.onChange(onTTSModelsChanged);
   onTTSModelsChanged(ModelManager.getModels());
 
+  // Online mode: handle model selection
+  onOnlineModelSelect((modelId) => {
+    selectedOnlineTTSModelId = modelId;
+    const model = getOnlineModels(ModelCategory.SpeechSynthesis).find(m => m.id === modelId);
+    if (model) {
+      const textSpan = container.querySelector('#tts-toolbar-model-text');
+      if (textSpan) textSpan.textContent = model.name;
+    }
+  });
+
+  onOnlineModeChange((online) => {
+    if (online && !selectedOnlineTTSModelId) {
+      const defaultModel = getOnlineModels(ModelCategory.SpeechSynthesis)[0];
+      if (defaultModel) {
+        selectedOnlineTTSModelId = defaultModel.id;
+        const textSpan = container.querySelector('#tts-toolbar-model-text');
+        if (textSpan) textSpan.textContent = defaultModel.name;
+      }
+    } else if (!online) {
+      const loaded = ModelManager.getLoadedModel(ModelCategory.SpeechSynthesis);
+      const textSpan = container.querySelector('#tts-toolbar-model-text');
+      if (textSpan) textSpan.textContent = loaded ? loaded.name : 'Select TTS Model';
+    }
+  });
+
   return {
     onDeactivate(): void {
       if (ttsPlayback) {
@@ -129,37 +157,58 @@ async function handleSpeak(): Promise<void> {
   statusEl.textContent = 'Loading TTS model...';
 
   try {
-    const ttsModel = await ModelManager.ensureLoaded(ModelCategory.SpeechSynthesis);
-    if (!ttsModel) {
-      throw new Error('No TTS model available. Tap the model button (top right) to download one.');
+    const speed = parseFloat(speedSlider.value);
+    let audioData: Float32Array;
+    let sampleRate: number;
+    let durationMs: number;
+
+    if (isOnline()) {
+      statusEl.textContent = 'Synthesizing speech...';
+      const result = await veniceSynthesize(text, selectedOnlineTTSModelId ?? 'tts-kokoro', {
+        speed,
+        voice: 'af_sky',
+      });
+      audioData = result.audioData;
+      sampleRate = result.sampleRate;
+      durationMs = (audioData.length / sampleRate) * 1000;
+    } else {
+      const ttsModel = await ModelManager.ensureLoaded(ModelCategory.SpeechSynthesis);
+      if (!ttsModel) {
+        throw new Error('No TTS model available. Tap the model button (top right) to download one.');
+      }
+
+      statusEl.textContent = 'Synthesizing speech...';
+
+      const { AudioPlayback } = await import(
+        '../../../../../sdk/runanywhere-web/packages/core/src/index'
+      );
+      const { TTS } = await import(
+        '../../../../../sdk/runanywhere-web/packages/onnx/src/index'
+      );
+
+      if (!TTS.isVoiceLoaded) {
+        throw new Error('TTS voice not loaded. Select and load a model first.');
+      }
+
+      const result = await TTS.synthesize(text, { speed });
+      audioData = result.audioData;
+      sampleRate = result.sampleRate;
+      durationMs = result.durationMs;
     }
 
-    statusEl.textContent = 'Synthesizing speech...';
-    const speed = parseFloat(speedSlider.value);
+    statusEl.textContent = `Playing (${(durationMs / 1000).toFixed(1)}s)...`;
+    ttsIsSpeaking = true;
+    renderSpeakUI();
 
     const { AudioPlayback } = await import(
       '../../../../../sdk/runanywhere-web/packages/core/src/index'
     );
-    const { TTS } = await import(
-      '../../../../../sdk/runanywhere-web/packages/onnx/src/index'
-    );
-
-    if (!TTS.isVoiceLoaded) {
-      throw new Error('TTS voice not loaded. Select and load a model first.');
-    }
-
-    const result = await TTS.synthesize(text, { speed });
-
-    statusEl.textContent = `Playing (${(result.durationMs / 1000).toFixed(1)}s)...`;
-    ttsIsSpeaking = true;
-    renderSpeakUI();
-
     if (!ttsPlayback) ttsPlayback = new AudioPlayback();
 
-    await ttsPlayback.play(result.audioData, result.sampleRate);
+    await ttsPlayback.play(audioData, sampleRate);
 
     ttsIsSpeaking = false;
-    statusEl.textContent = `Done — ${(result.durationMs / 1000).toFixed(1)}s audio in ${(result.processingTimeMs / 1000).toFixed(1)}s`;
+    statusEl.textContent = `Done — ${(durationMs / 1000).toFixed(1)}s audio`;
     renderSpeakUI();
   } catch (err) {
     ttsIsSpeaking = false;

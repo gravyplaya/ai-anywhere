@@ -1,4 +1,4 @@
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, type Plugin, loadEnv } from 'vite';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -49,7 +49,11 @@ function copyWasmPlugin(): Plugin {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, __dir, '');
+  const veniceApiKey = env.VENICE_API_KEY ?? '';
+
+  return {
   plugins: [
     copyWasmPlugin(),
     VitePWA({
@@ -104,6 +108,15 @@ export default defineConfig({
     },
   },
   server: {
+    proxy: veniceApiKey ? {
+      '/api/v1': {
+        target: 'https://api.venice.ai',
+        changeOrigin: true,
+        headers: {
+          'Authorization': `Bearer ${veniceApiKey}`,
+        },
+      },
+    } : undefined,
     headers: {
       // Cross-Origin Isolation — required for SharedArrayBuffer / multi-threaded WASM.
       // Without these headers the SDK falls back to single-threaded mode.
@@ -122,4 +135,5 @@ export default defineConfig({
     exclude: ['@runanywhere/web'],
   },
   assetsInclude: ['**/*.wasm'],
+  };
 });

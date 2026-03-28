@@ -2,143 +2,57 @@
 
 ## Prerequisites
 
-- Android Studio Arctic Fox or later
-- JDK 17+
-- Android SDK with Build Tools
-- Android NDK 27.0.12077973 (or compatible)
+- Node.js 18+
+- npm or pnpm
 
-Set environment variables (recommended):
+## Web SDK
 
-```bash
-export ANDROID_HOME=/path/to/android/sdk
-export ANDROID_NDK_HOME=/path/to/android/ndk/27.0.12077973
-```
-
-## Quick Start
+### First-time setup
 
 ```bash
-# Check environment and create local.properties
-./gradlew setup
-
-# Build SDK and all examples
-./gradlew buildAll
+cd sdk/runanywhere-web/
+npm install
 ```
 
-Or open the project in Android Studio and wait for Gradle sync.
-
-## Gradle Project Structure
-
-```text
-RunAnywhere (root)
-├── :runanywhere-kotlin           # KMP SDK (JVM + Android)
-├── :runanywhere-core-llamacpp    # LLM backend (optional)
-├── :runanywhere-core-onnx        # STT/TTS/VAD backend (optional)
-├── RunAnywhereAI (composite)     # Android example app
-└── plugin (composite)            # IntelliJ plugin example
-```
-
-## Commands
-
-### Setup
+### Build
 
 ```bash
-./gradlew setup              # Check environment + create local.properties
+# TypeScript typecheck
+npm run typecheck -w packages/core
+
+# TypeScript build
+npm run build -w packages/core
+
+# Full build (WASM + TypeScript, requires Emscripten)
+./scripts/build-web.sh --setup
+./scripts/build-web.sh
 ```
 
-### SDK
-
-```bash
-./gradlew buildSdk           # Build debug AAR + JVM JAR
-./gradlew buildSdkRelease    # Build release AAR
-./gradlew publishSdkToMavenLocal  # Publish to ~/.m2/repository
-```
-
-### Android Example App
-
-```bash
-./gradlew buildAndroidApp    # Build debug APK
-./gradlew runAndroidApp      # Build, install, and launch on device
-```
-
-### IntelliJ Plugin
-
-```bash
-./gradlew buildIntellijPlugin  # Publish SDK + build plugin
-./gradlew runIntellijPlugin    # Publish SDK + run plugin in sandbox
-```
-
-### Everything
-
-```bash
-./gradlew buildAll           # Setup + build SDK + all examples
-./gradlew cleanAll           # Clean all projects
-```
-
-## JNI Library Modes
-
-Native libraries can be sourced in two ways, controlled by `gradle.properties`:
-
-### Remote mode (default for CI)
-
-Downloads pre-built `.so` files from GitHub releases. No NDK required.
-
-```properties
-runanywhere.testLocal=false
-```
-
-### Local mode (for C++ development)
-
-Builds native libraries from `runanywhere-commons` source. Requires NDK.
-
-```properties
-runanywhere.testLocal=true
-```
-
-First-time local setup:
-
-```bash
-cd sdk/runanywhere-kotlin
-./scripts/build-kotlin.sh --setup
-```
-
-To rebuild after C++ changes:
-
-```bash
-./gradlew :runanywhere-kotlin:rebuildCommons
-```
-
-## Output Locations
+### Output Locations
 
 | Artifact | Path |
 |----------|------|
-| SDK AAR | `sdk/runanywhere-kotlin/build/outputs/aar/` |
-| SDK JVM JAR | `sdk/runanywhere-kotlin/build/libs/` |
-| Android APK | `examples/android/RunAnywhereAI/app/build/outputs/apk/` |
-| IntelliJ Plugin | `examples/intellij-plugin-demo/plugin/build/distributions/` |
-| Maven Local | `~/.m2/repository/com/runanywhere/runanywhere-sdk/` |
+| TypeScript | `sdk/runanywhere-web/packages/core/dist/` |
+| WASM module | `sdk/runanywhere-web/packages/core/wasm/racommons.wasm` |
 
-## Troubleshooting
-
-### Missing local.properties
+## Web Example App
 
 ```bash
-./gradlew setup
+cd examples/web/RunAnywhereAI/
+npm install
+npm run dev
 ```
 
-### JNI libraries not found
+Opens at `http://localhost:5173`.
 
-Remote mode:
-```bash
-./gradlew :runanywhere-kotlin:downloadJniLibs
-```
+## C++ Commons (for WASM builds)
 
-Local mode:
-```bash
-cd sdk/runanywhere-kotlin && ./scripts/build-kotlin.sh --setup
-```
-
-### Clean rebuild
+The web SDK's WASM layer is compiled from `sdk/runanywhere-commons/` via Emscripten.
 
 ```bash
-./gradlew cleanAll && ./gradlew buildAll
+cd sdk/runanywhere-commons/
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
 ```
+
+See `sdk/runanywhere-web/wasm/CMakeLists.txt` for WASM-specific build configuration.

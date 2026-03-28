@@ -7,7 +7,9 @@ import type { TabLifecycle } from '../app';
 import { AudioCapture, SpeechActivity } from '../../../../../sdk/runanywhere-web/packages/core/src/index';
 import { VAD } from '../../../../../sdk/runanywhere-web/packages/onnx/src/index';
 import { ModelManager, ModelCategory, ensureVADLoaded, type ModelInfo } from '../services/model-manager';
-import { showModelSelectionSheet } from '../components/model-selection';
+import { showModelSelectionSheet, onOnlineModelSelect } from '../components/model-selection';
+import { isOnline, getOnlineModels, onOnlineModeChange } from '../services/online-mode';
+import { transcribe as veniceTranscribe, pcmToWavBlob } from '../services/venice-client';
 
 let container: HTMLElement;
 
@@ -32,6 +34,7 @@ let liveVadActive = false;
 let isLiveTranscribing = false;
 /** Unsubscribe function for VAD speech activity callback. */
 let unsubscribeVAD: (() => void) | null = null;
+let selectedOnlineSTTModelId: string | null = null;
 
 // Minimum audio segment (samples at 16kHz) worth transcribing — ~0.5s
 const MIN_BUFFER_SAMPLES = 8000;
@@ -134,6 +137,31 @@ export function initTranscribeTab(el: HTMLElement): TabLifecycle {
   // Subscribe to model changes so the pill label stays current
   ModelManager.onChange(onSTTModelsChanged);
   onSTTModelsChanged(ModelManager.getModels());
+
+  // Online mode: handle model selection
+  onOnlineModelSelect((modelId) => {
+    selectedOnlineSTTModelId = modelId;
+    const model = getOnlineModels(ModelCategory.SpeechRecognition).find(m => m.id === modelId);
+    if (model) {
+      const textSpan = container.querySelector('#stt-toolbar-model-text');
+      if (textSpan) textSpan.textContent = model.name;
+    }
+  });
+
+  onOnlineModeChange((online) => {
+    if (online && !selectedOnlineSTTModelId) {
+      const defaultModel = getOnlineModels(ModelCategory.SpeechRecognition)[0];
+      if (defaultModel) {
+        selectedOnlineSTTModelId = defaultModel.id;
+        const textSpan = container.querySelector('#stt-toolbar-model-text');
+        if (textSpan) textSpan.textContent = defaultModel.name;
+      }
+    } else if (!online) {
+      const loaded = ModelManager.getLoadedModel(ModelCategory.SpeechRecognition);
+      const textSpan = container.querySelector('#stt-toolbar-model-text');
+      if (textSpan) textSpan.textContent = loaded ? loaded.name : 'Select STT Model';
+    }
+  });
 
   return {
     onDeactivate(): void {
@@ -278,6 +306,14 @@ async function performBatchTranscription(): Promise<void> {
 }
 
 async function transcribeAudio(pcmFloat32: Float32Array, sampleRate?: number): Promise<string> {
+  if (isOnline()) {
+    const modelId = selectedOnlineSTTModelId ?? 'openai/whisper-large-v3';
+    const wavBlob = pcmToWavBlob(pcmFloat32, sampleRate ?? 16000);
+    const result = await veniceTranscribe(wavBlob, modelId);
+    console.log(`[Transcribe] Online STT result: "${result.text}"`);
+    return result.text;
+  }
+
   const model = await ModelManager.ensureLoaded(ModelCategory.SpeechRecognition);
   if (!model) {
     throw new Error('No STT model available. Tap the model button (top right) to download one.');

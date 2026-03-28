@@ -11,7 +11,9 @@
 
 import type { TabLifecycle } from '../app';
 import { ModelManager, ModelCategory, type ModelInfo } from '../services/model-manager';
-import { showModelSelectionSheet } from '../components/model-selection';
+import { showModelSelectionSheet, onOnlineModelSelect } from '../components/model-selection';
+import { isOnline, getOnlineModels, onOnlineModeChange, type OnlineModelDef } from '../services/online-mode';
+import { chatWithVision } from '../services/venice-client';
 import { VideoCapture, type CapturedFrame } from '../../../../../sdk/runanywhere-web/packages/core/src/index';
 import { VLMWorkerBridge } from '../../../../../sdk/runanywhere-web/packages/llamacpp/src/index';
 
@@ -57,6 +59,7 @@ let isProcessing = false;
 let isLiveMode = false;
 let liveIntervalId: ReturnType<typeof setTimeout> | null = null;
 let currentDescription = '';
+let selectedOnlineVisionModelId: string | null = null;
 
 // ---------------------------------------------------------------------------
 // Init
@@ -165,6 +168,48 @@ export function initVisionTab(el: HTMLElement): TabLifecycle {
   // Subscribe to model changes
   ModelManager.onChange(onModelsChanged);
   onModelsChanged(ModelManager.getModels());
+
+  // Online mode: handle model selection and overlay visibility
+  onOnlineModelSelect((modelId) => {
+    selectedOnlineVisionModelId = modelId;
+    const model = getOnlineModels(ModelCategory.Multimodal).find(m => m.id === modelId);
+    if (model) {
+      const textSpan = toolbarModelEl.querySelector('#vision-toolbar-model-text');
+      if (textSpan) textSpan.textContent = model.name;
+      overlayEl.classList.add('hidden');
+      (container.querySelector('#vision-main') as HTMLElement).classList.remove('hidden');
+      if (!camera.isCapturing) startCamera();
+    }
+  });
+
+  onOnlineModeChange((online) => {
+    if (online) {
+      overlayEl.classList.add('hidden');
+      (container.querySelector('#vision-main') as HTMLElement).classList.remove('hidden');
+      if (!selectedOnlineVisionModelId) {
+        const defaultModel = getOnlineModels(ModelCategory.Multimodal)[0];
+        if (defaultModel) {
+          selectedOnlineVisionModelId = defaultModel.id;
+          const textSpan = toolbarModelEl.querySelector('#vision-toolbar-model-text');
+          if (textSpan) textSpan.textContent = defaultModel.name;
+        }
+      }
+    } else {
+      selectedOnlineVisionModelId = null;
+      const loaded = ModelManager.getLoadedModel(ModelCategory.Multimodal);
+      const textSpan = toolbarModelEl.querySelector('#vision-toolbar-model-text');
+      if (loaded) {
+        overlayEl.classList.add('hidden');
+        if (textSpan) textSpan.textContent = loaded.name;
+      } else {
+        overlayEl.classList.remove('hidden');
+        if (textSpan) textSpan.textContent = 'Select Vision Model';
+        (container.querySelector('#vision-main') as HTMLElement).classList.add('hidden');
+        stopLiveMode();
+        camera.stop();
+      }
+    }
+  });
 
   // Return lifecycle callbacks for tab-switching cleanup
   return {
@@ -361,10 +406,17 @@ function stopLiveMode(): void {
 async function describeCurrent(prompt: string, maxTokens: number): Promise<void> {
   if (isProcessing) return;
 
-  const loaded = ModelManager.getLoadedModel(ModelCategory.Multimodal);
-  if (!loaded) {
-    openModelSheet();
-    return;
+  if (isOnline()) {
+    if (!selectedOnlineVisionModelId) {
+      openModelSheet();
+      return;
+    }
+  } else {
+    const loaded = ModelManager.getLoadedModel(ModelCategory.Multimodal);
+    if (!loaded) {
+      openModelSheet();
+      return;
+    }
   }
 
   // Live mode uses a smaller capture (256px) for faster CLIP encoding
@@ -402,43 +454,91 @@ async function processFrame(frame: CapturedFrame, prompt: string, maxTokens: num
   }
 
   try {
-    const workerBridge = VLMWorkerBridge.shared;
+    if (isOnline()) {
+      const modelId = selectedOnlineVisionModelId ?? 'qwen-2.5-vl';
+      const canvas = document.createElement('canvas');
+      canvas.width = frame.width;
+      canvas.height = frame.height;
+      const ctx = canvas.getContext('2d')!;
+      const imageData = ctx.createImageData(frame.width, frame.height);
+      for (let i = 0; i < frame.rgbPixels.length; i++) {
+        imageData.data[i] = frame.rgbPixels[i];
+      }
+      ctx.putImageData(imageData, 0, 0);
+      const base64 = canvas.toDataURL('image/jpeg', 0.8);
 
-    if (!workerBridge.isModelLoaded) {
-      throw new Error('VLM model not loaded in Worker');
+      const messages = [{
+        role: 'user' as const,
+        content: [
+          { type: 'image_url', image_url: { url: base64 } },
+          { type: 'text', text: prompt },
+        ],
+      }];
+
+      const stream = await chatWithVision(messages, modelId, { maxTokens, temperature: 0.7 });
+      const reader = stream.getReader();
+      let resultText = '';
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          resultText += value;
+          descriptionEl.textContent = resultText;
+        }
+      } finally {
+        reader.releaseLock();
+      }
+
+      const elapsedMs = performance.now() - t0;
+      const elapsedSec = elapsedMs / 1000;
+      const tokPerSec = elapsedSec > 0 ? resultText.length / 4 / elapsedSec : 0;
+
+      currentDescription = resultText;
+      descriptionEl.textContent = currentDescription;
+      copyBtn.classList.toggle('hidden', !currentDescription);
+
+      metricsEl.classList.remove('hidden');
+      metricsEl.innerHTML = `
+        <span class="metric"><span class="metric-value">${tokPerSec.toFixed(1)}</span> tok/s</span>
+        <span class="metric-separator">&middot;</span>
+        <span class="metric"><span class="metric-value">${elapsedSec.toFixed(1)}s</span></span>
+      `;
+    } else {
+      const workerBridge = VLMWorkerBridge.shared;
+
+      if (!workerBridge.isModelLoaded) {
+        throw new Error('VLM model not loaded in Worker');
+      }
+
+      const result = await workerBridge.process(
+        frame.rgbPixels,
+        frame.width,
+        frame.height,
+        prompt,
+        { maxTokens, temperature: 0.7, systemPrompt: 'You are a helpful assistant.' },
+      );
+
+      const elapsedMs = performance.now() - t0;
+      const elapsedSec = elapsedMs / 1000;
+      const tokPerSec = elapsedSec > 0 ? result.totalTokens / elapsedSec : 0;
+
+      currentDescription = result.text;
+      descriptionEl.textContent = currentDescription;
+      copyBtn.classList.toggle('hidden', !currentDescription);
+
+      metricsEl.classList.remove('hidden');
+      metricsEl.innerHTML = `
+        <span class="metric"><span class="metric-value">${tokPerSec.toFixed(1)}</span> tok/s</span>
+        <span class="metric-separator">&middot;</span>
+        <span class="metric"><span class="metric-value">${result.totalTokens}</span> tokens</span>
+        <span class="metric-separator">&middot;</span>
+        <span class="metric"><span class="metric-value">${elapsedSec.toFixed(1)}s</span></span>
+      `;
+
+      console.log(
+        `[Vision] VLM: ${result.totalTokens} tokens, ${tokPerSec.toFixed(1)} tok/s, ${elapsedSec.toFixed(1)}s wall`,
+      );
     }
-
-    const result = await workerBridge.process(
-      frame.rgbPixels,
-      frame.width,
-      frame.height,
-      prompt,
-      { maxTokens, temperature: 0.7, systemPrompt: 'You are a helpful assistant.' },
-    );
-
-    // Compute metrics from JS wall clock
-    const elapsedMs = performance.now() - t0;
-    const elapsedSec = elapsedMs / 1000;
-    const tokPerSec = elapsedSec > 0 ? result.totalTokens / elapsedSec : 0;
-
-    // Update description
-    currentDescription = result.text;
-    descriptionEl.textContent = currentDescription;
-    copyBtn.classList.toggle('hidden', !currentDescription);
-
-    // Show metrics
-    metricsEl.classList.remove('hidden');
-    metricsEl.innerHTML = `
-      <span class="metric"><span class="metric-value">${tokPerSec.toFixed(1)}</span> tok/s</span>
-      <span class="metric-separator">&middot;</span>
-      <span class="metric"><span class="metric-value">${result.totalTokens}</span> tokens</span>
-      <span class="metric-separator">&middot;</span>
-      <span class="metric"><span class="metric-value">${elapsedSec.toFixed(1)}s</span></span>
-    `;
-
-    console.log(
-      `[Vision] VLM: ${result.totalTokens} tokens, ${tokPerSec.toFixed(1)} tok/s, ${elapsedSec.toFixed(1)}s wall`,
-    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[Vision] VLM failed:', msg);
