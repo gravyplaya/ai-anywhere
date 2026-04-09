@@ -4,16 +4,9 @@
  */
 
 import { ModelManager, ModelCategory, type ModelInfo } from '../services/model-manager';
-import { isOnline, getOnlineModels, onOnlineModeChange, type OnlineModelDef } from '../services/online-mode';
 import { showToast, showEvictionDialog } from './dialogs';
 
 let modalEl: HTMLElement | null = null;
-
-let onlineModelSelectedCallback: ((modelId: string) => void) | null = null;
-
-export function onOnlineModelSelect(cb: (modelId: string) => void): void {
-  onlineModelSelectedCallback = cb;
-}
 
 // ---------------------------------------------------------------------------
 // Show Modal
@@ -35,21 +28,14 @@ export interface ModelSelectionSheetOptions {
 let sheetOptions: ModelSelectionSheetOptions = {};
 
 export function showModelSelectionSheet(modality?: ModelCategory, options?: ModelSelectionSheetOptions): void {
-  if (modalEl) return;
+  if (modalEl) return; // Already open
   sheetOptions = options ?? {};
 
-  const online = isOnline();
+  const models = modality
+    ? ModelManager.getModels().filter((m) => m.modality === modality)
+    : ModelManager.getModels();
 
-  let models: Array<ModelInfo | OnlineModelDef>;
-  if (online) {
-    models = getOnlineModels(modality);
-  } else {
-    const localModels = modality
-      ? ModelManager.getModels().filter((m) => m.modality === modality)
-      : ModelManager.getModels();
-    models = localModels;
-  }
-
+  // Device info
   const memory = (navigator as any).deviceMemory ?? '--';
   const cores = navigator.hardwareConcurrency ?? '--';
   const browser = detectBrowser();
@@ -66,11 +52,7 @@ export function showModelSelectionSheet(modality?: ModelCategory, options?: Mode
         </button>
       </div>
       <div class="modal-body">
-        ${online ? `
-        <div class="online-model-badge" style="margin-bottom: var(--space-md); padding: 6px 12px;">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-          Cloud Models
-        </div>` : `
+        <!-- Device Info -->
         <div class="device-info">
           <div class="device-info-item">
             <div class="value">${browser}</div>
@@ -84,8 +66,9 @@ export function showModelSelectionSheet(modality?: ModelCategory, options?: Mode
             <div class="value">${cores}</div>
             <div class="label">CPU Cores</div>
           </div>
-        </div>`}
+        </div>
 
+        <!-- Model List -->
         <div id="model-sheet-list"></div>
       </div>
     </div>
@@ -93,26 +76,25 @@ export function showModelSelectionSheet(modality?: ModelCategory, options?: Mode
 
   document.body.appendChild(modalEl);
 
+  // Close handlers
   modalEl.querySelector('#model-sheet-close')!.addEventListener('click', closeSheet);
   modalEl.addEventListener('click', (e) => {
     if (e.target === modalEl) closeSheet();
   });
 
-  if (online) {
-    renderOnlineModelList(models as OnlineModelDef[], modality);
-  } else {
-    renderModelList(models as ModelInfo[]);
-  }
+  // Render model list
+  renderModelList(models);
 
-  if (!online) {
-    const unsub = ModelManager.onChange(() => {
-      const updated = modality
-        ? ModelManager.getModels().filter((m) => m.modality === modality)
-        : ModelManager.getModels();
-      renderModelList(updated);
-    });
-    (modalEl as any).__unsub = unsub;
-  }
+  // Subscribe to updates
+  const unsub = ModelManager.onChange(() => {
+    const updated = modality
+      ? ModelManager.getModels().filter((m) => m.modality === modality)
+      : ModelManager.getModels();
+    renderModelList(updated);
+  });
+
+  // Store unsub for cleanup
+  (modalEl as any).__unsub = unsub;
 }
 
 // ---------------------------------------------------------------------------
@@ -286,61 +268,18 @@ function getActionButton(model: ModelInfo): string {
 }
 
 // ---------------------------------------------------------------------------
-// Online Model List (cloud models — no download needed)
-// ---------------------------------------------------------------------------
-
-function renderOnlineModelList(models: OnlineModelDef[], modality?: ModelCategory): void {
-  const listEl = document.getElementById('model-sheet-list');
-  if (!listEl) return;
-
-  listEl.innerHTML = models
-    .map((m) => {
-      return `
-        <div class="model-row" data-model-id="${m.id}">
-          <div class="model-logo">${getModelEmojiForCategory(m.modality)}</div>
-          <div class="model-info">
-            <div class="model-name">${m.name}</div>
-            <div class="model-meta">
-              <span class="online-model-badge">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                Cloud
-              </span>
-            </div>
-          </div>
-          <button class="model-action-btn load" data-action="select-online" data-model-id="${m.id}">Select</button>
-        </div>
-      `;
-    })
-    .join('');
-
-  listEl.querySelectorAll('[data-action="select-online"]').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const modelId = (btn as HTMLElement).dataset.modelId!;
-      const model = models.find((m) => m.id === modelId);
-      showToast(`${model?.name ?? 'Model'} Selected`);
-      closeSheet();
-      onlineModelSelectedCallback?.(modelId);
-    });
-  });
-}
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getModelEmojiForCategory(category: ModelCategory): string {
-  switch (category) {
+function getModelEmoji(model: ModelInfo): string {
+  switch (model.modality) {
     case ModelCategory.Language: return '&#129302;';
     case ModelCategory.Multimodal: return '&#128065;';
     case ModelCategory.SpeechRecognition: return '&#127908;';
     case ModelCategory.SpeechSynthesis: return '&#128266;';
+    case ModelCategory.ImageGeneration: return '&#127912;';
     default: return '&#129302;';
   }
-}
-
-function getModelEmoji(model: ModelInfo): string {
-  return getModelEmojiForCategory(model.modality!);
 }
 
 function formatMB(bytes: number): string {

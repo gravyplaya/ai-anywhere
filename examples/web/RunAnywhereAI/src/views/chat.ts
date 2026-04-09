@@ -8,9 +8,7 @@
 
 import type { TabLifecycle } from '../app';
 import { ModelManager, ModelCategory, type ModelInfo } from '../services/model-manager';
-import { showModelSelectionSheet, onOnlineModelSelect } from '../components/model-selection';
-import { isOnline, getOnlineModels, onOnlineModeChange, type OnlineModelDef } from '../services/online-mode';
-import { chatStream } from '../services/venice-client';
+import { showModelSelectionSheet } from '../components/model-selection';
 import type { ToolValue } from '../../../../../sdk/runanywhere-web/packages/llamacpp/src/Extensions/RunAnywhere+ToolCalling';
 
 // ---------------------------------------------------------------------------
@@ -52,7 +50,6 @@ let sendBtn: HTMLButtonElement;
 let overlayEl: HTMLElement;
 let toolbarModelEl: HTMLElement;
 let toolsToggleBtn: HTMLElement;
-let selectedOnlineModelId: string | null = null;
 
 // ---------------------------------------------------------------------------
 // Init
@@ -161,44 +158,6 @@ export function initChatTab(el: HTMLElement): TabLifecycle {
   // Subscribe to model changes
   ModelManager.onChange(onModelsChanged);
   onModelsChanged(ModelManager.getModels());
-
-  // Online mode: handle model selection and overlay visibility
-  onOnlineModelSelect((modelId) => {
-    selectedOnlineModelId = modelId;
-    const model = getOnlineModels(ModelCategory.Language).find(m => m.id === modelId);
-    if (model) {
-      const textSpan = toolbarModelEl.querySelector('#chat-toolbar-model-text');
-      if (textSpan) textSpan.textContent = model.name;
-      overlayEl.classList.add('hidden');
-    }
-  });
-
-  onOnlineModeChange((online) => {
-    if (online) {
-      overlayEl.style.display = 'none';
-      if (!selectedOnlineModelId) {
-        const defaultModel = getOnlineModels(ModelCategory.Language)[0];
-        if (defaultModel) {
-          selectedOnlineModelId = defaultModel.id;
-          const textSpan = toolbarModelEl.querySelector('#chat-toolbar-model-text');
-          if (textSpan) textSpan.textContent = defaultModel.name;
-        }
-      }
-    } else {
-      // Revert to offline: show overlay if no local model is loaded
-      selectedOnlineModelId = null;
-      const loaded = ModelManager.getLoadedModel(ModelCategory.Language);
-      const textSpan = toolbarModelEl.querySelector('#chat-toolbar-model-text');
-      if (loaded) {
-        overlayEl.style.display = 'none';
-        if (textSpan) textSpan.textContent = loaded.name;
-      } else {
-        overlayEl.style.display = '';
-        if (textSpan) textSpan.textContent = 'Select Model';
-      }
-    }
-    updateEmptyState();
-  });
 
   // Return lifecycle callbacks for tab-switching cleanup
   return {
@@ -501,17 +460,10 @@ async function sendMessage(): Promise<void> {
   const text = inputEl.value.trim();
   if (!text || isGenerating) return;
 
-  if (isOnline()) {
-    if (!selectedOnlineModelId) {
-      openModelSheet();
-      return;
-    }
-  } else {
-    const loaded = ModelManager.getLoadedModel(ModelCategory.Language);
-    if (!loaded) {
-      openModelSheet();
-      return;
-    }
+  const loaded = ModelManager.getLoadedModel(ModelCategory.Language);
+  if (!loaded) {
+    openModelSheet();
+    return;
   }
 
   // Hide empty state on first message
@@ -536,13 +488,9 @@ async function sendMessage(): Promise<void> {
   showTypingIndicator();
 
   try {
-    if (isOnline()) {
-      await sendOnlineStreaming(text);
-    } else if (toolsEnabled) {
-      const loaded = ModelManager.getLoadedModel(ModelCategory.Language)!;
+    if (toolsEnabled) {
       await sendWithToolCalling(text, loaded);
     } else {
-      const loaded = ModelManager.getLoadedModel(ModelCategory.Language)!;
       await sendStreaming(text, loaded);
     }
   } catch (err) {
@@ -554,9 +502,9 @@ async function sendMessage(): Promise<void> {
     const errorMsg: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'assistant',
-      content: `**Error:** ${errorMessage}`,
+      content: `**Error:** ${errorMessage}\n\nPlease make sure a model is downloaded and loaded.`,
       timestamp: Date.now(),
-      modelId: isOnline() ? selectedOnlineModelId! : ModelManager.getLoadedModel(ModelCategory.Language)?.id,
+      modelId: loaded.id,
     };
     messages.push(errorMsg);
     renderMessage(errorMsg);
@@ -635,63 +583,6 @@ async function sendStreaming(text: string, loaded: ModelInfo): Promise<void> {
     tokens: finalResult.tokensUsed,
     latencyMs: finalResult.latencyMs,
     tokensPerSecond: finalResult.tokensPerSecond,
-  });
-  scrollToBottom();
-}
-
-async function sendOnlineStreaming(text: string): Promise<void> {
-  const modelId = selectedOnlineModelId ?? getOnlineModels(ModelCategory.Language)[0]?.id;
-  if (!modelId) throw new Error('No online model selected');
-
-  const chatMessages = messages
-    .filter(m => m.role === 'user' || m.role === 'assistant')
-    .map(m => ({ role: m.role, content: m.content }));
-  chatMessages.push({ role: 'user', content: text });
-
-  const t0 = performance.now();
-  const stream = await chatStream(chatMessages, modelId, {
-    maxTokens: 2048,
-    temperature: 0.7,
-  });
-
-  hideTypingIndicator();
-
-  const assistantMsg: ChatMessage = {
-    id: crypto.randomUUID(),
-    role: 'assistant',
-    content: '',
-    timestamp: Date.now(),
-    modelId,
-  };
-  messages.push(assistantMsg);
-  const { bubbleEl, rowEl } = renderStreamingBubble(assistantMsg);
-
-  let fullText = '';
-  const reader = stream.getReader();
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      fullText += value;
-      assistantMsg.content = fullText;
-      bubbleEl.innerHTML = renderMarkdown(assistantMsg.content);
-      scrollToBottom();
-      await new Promise(r => setTimeout(r, 12));
-    }
-  } finally {
-    reader.releaseLock();
-  }
-
-  const elapsedMs = performance.now() - t0;
-  const tokenCount = fullText.length / 4;
-  const tokPerSec = elapsedMs > 0 ? tokenCount / (elapsedMs / 1000) : 0;
-
-  console.log(`[Chat] Online generation complete: ~${Math.round(tokenCount)} tokens in ${elapsedMs.toFixed(0)}ms`);
-
-  appendMetrics(rowEl, {
-    tokens: Math.round(tokenCount),
-    latencyMs: elapsedMs,
-    tokensPerSecond: tokPerSec,
   });
   scrollToBottom();
 }

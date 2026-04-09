@@ -6,12 +6,10 @@
  */
 
 import type { TabLifecycle } from '../app';
-import { showModelSelectionSheet, onOnlineModelSelect } from '../components/model-selection';
+import { showModelSelectionSheet } from '../components/model-selection';
 import { ModelManager, ModelCategory, ensureVADLoaded } from '../services/model-manager';
 import { VoicePipeline, PipelineState, AudioCapture, AudioPlayback, SpeechActivity } from '../../../../../sdk/runanywhere-web/packages/core/src/index';
 import { VAD } from '../../../../../sdk/runanywhere-web/packages/onnx/src/index';
-import { isOnline, getOnlineModels, onOnlineModeChange } from '../services/online-mode';
-import { chatStream, transcribe as veniceTranscribe, synthesize as veniceSynthesize, pcmToWavBlob } from '../services/venice-client';
 
 /** Shared AudioCapture instance for this view (replaces app-level MicCapture singleton). */
 const micCapture = new AudioCapture();
@@ -57,9 +55,6 @@ let sessionActive = false;
 let vadActive = false;
 /** Unsubscribe function for VAD speech activity callback. */
 let unsubscribeVAD: (() => void) | null = null;
-let selectedOnlineLLMModelId: string | null = null;
-let selectedOnlineSTTModelId: string | null = null;
-let selectedOnlineTTSModelId: string | null = null;
 
 interface Particle {
   x: number; y: number;
@@ -182,28 +177,6 @@ export function initVoiceTab(el: HTMLElement): TabLifecycle {
   // Initial pipeline UI check (in case models are already loaded)
   refreshPipelineUI();
 
-  // Online mode: handle model selection across all three modalities
-  onOnlineModelSelect((modelId) => {
-    const model = [...getOnlineModels()];
-    const found = model.find(m => m.id === modelId);
-    if (!found) return;
-    if (found.modality === ModelCategory.Language) selectedOnlineLLMModelId = modelId;
-    else if (found.modality === ModelCategory.SpeechRecognition) selectedOnlineSTTModelId = modelId;
-    else if (found.modality === ModelCategory.SpeechSynthesis) selectedOnlineTTSModelId = modelId;
-    refreshPipelineUI();
-  });
-
-  onOnlineModeChange((online) => {
-    if (online) {
-      if (!selectedOnlineSTTModelId) selectedOnlineSTTModelId = getOnlineModels(ModelCategory.SpeechRecognition)[0]?.id ?? null;
-      if (!selectedOnlineLLMModelId) selectedOnlineLLMModelId = getOnlineModels(ModelCategory.Language)[0]?.id ?? null;
-      if (!selectedOnlineTTSModelId) selectedOnlineTTSModelId = getOnlineModels(ModelCategory.SpeechSynthesis)[0]?.id ?? null;
-      refreshPipelineUI();
-    } else {
-      refreshPipelineUI();
-    }
-  });
-
   // Return lifecycle callbacks for tab-switching cleanup
   return {
     onDeactivate(): void {
@@ -225,7 +198,6 @@ function refreshPipelineUI(): void {
   const startBtn = container.querySelector('#voice-start-btn') as HTMLButtonElement | null;
   if (!startBtn) return;
 
-  const online = isOnline();
   let allReady = true;
 
   for (const step of PIPELINE_STEPS) {
@@ -234,24 +206,12 @@ function refreshPipelineUI(): void {
 
     const statusEl = card.querySelector('.setup-card-status');
     const stepNumber = card.querySelector('.setup-step-number');
+    const loadedModel = ModelManager.getLoadedModel(step.modality);
 
-    let modelName: string | null = null;
-    if (online) {
-      if (step.modality === ModelCategory.Language) modelName = selectedOnlineLLMModelId;
-      else if (step.modality === ModelCategory.SpeechRecognition) modelName = selectedOnlineSTTModelId;
-      else if (step.modality === ModelCategory.SpeechSynthesis) modelName = selectedOnlineTTSModelId;
-      if (modelName) {
-        const m = getOnlineModels(step.modality).find(m => m.id === modelName);
-        modelName = m?.name ?? null;
-      }
-    } else {
-      const loadedModel = ModelManager.getLoadedModel(step.modality);
-      modelName = loadedModel?.name ?? null;
-    }
-
-    if (modelName) {
+    if (loadedModel) {
+      // Model is loaded — show checkmark and model name
       if (statusEl) {
-        statusEl.textContent = modelName;
+        statusEl.textContent = loadedModel.name;
         (statusEl as HTMLElement).classList.add('text-green');
       }
       if (stepNumber) {
@@ -259,6 +219,7 @@ function refreshPipelineUI(): void {
       }
       card.classList.add('loaded');
     } else {
+      // Not loaded — show default state
       if (statusEl) {
         statusEl.textContent = step.defaultStatus;
         (statusEl as HTMLElement).classList.remove('text-green');
@@ -438,13 +399,61 @@ async function runPipeline(audioData: Float32Array): Promise<void> {
     setStatus('Transcribing...');
     console.log(`[Voice] STT: ${(audioData.length / 16000).toFixed(1)}s of audio`);
 
+    // Prepare a response container for streaming LLM output
     const responseEl = container.querySelector('#voice-response');
 
-    if (isOnline()) {
-      await runOnlinePipeline(audioData, responseEl);
-    } else {
-      await runOfflinePipeline(audioData, responseEl);
-    }
+    await pipeline.processTurn(audioData, {
+      maxTokens: 1024,
+      temperature: 0.7,
+      systemPrompt:
+        'You are a helpful voice assistant. Keep responses concise — 1-3 sentences. Be conversational and friendly.',
+    }, {
+      onStateChange: (s) => {
+        if (s === PipelineState.ProcessingSTT) setStatus('Transcribing...');
+        else if (s === PipelineState.GeneratingResponse) setStatus('Thinking...');
+        else if (s === PipelineState.PlayingTTS) {
+          state = 'speaking';
+          setStatus('Speaking...');
+        }
+      },
+
+      onTranscription: (text) => {
+        if (!text) {
+          console.log('[Voice] No speech detected');
+          return;
+        }
+        console.log(`[Voice] STT result: "${text}"`);
+        setResponse(`<div class="text-secondary mb-sm"><strong>You:</strong> ${escapeHtml(text)}</div>`);
+        setStatus('Thinking...');
+        // Append streaming response container
+        if (responseEl) {
+          responseEl.innerHTML += `<div><strong>Assistant:</strong> <span id="voice-llm-output"></span></div>`;
+        }
+      },
+
+      onResponseToken: (_token, accumulated) => {
+        const outputSpan = container.querySelector('#voice-llm-output');
+        if (outputSpan) outputSpan.textContent = accumulated;
+      },
+
+      onResponseComplete: (text, llmResult) => {
+        const outputSpan = container.querySelector('#voice-llm-output');
+        if (outputSpan) outputSpan.textContent = text;
+        console.log(`[Voice] LLM: ${llmResult.tokensUsed} tokens, ${llmResult.tokensPerSecond.toFixed(1)} tok/s`);
+      },
+
+      onSynthesisComplete: async (audio, sampleRate) => {
+        console.log(`[Voice] TTS: playing ${(audio.length / sampleRate).toFixed(1)}s of audio`);
+        const player = new AudioPlayback({ sampleRate });
+        await player.play(audio, sampleRate);
+        player.dispose();
+      },
+
+      onError: (err) => {
+        console.error('[Voice] Pipeline error:', err);
+        setStatus(`Error: ${err.message}`);
+      },
+    });
 
     // Resume listening (continuous mode) or go idle
     if (sessionActive) {
@@ -463,118 +472,6 @@ async function runPipeline(audioData: Float32Array): Promise<void> {
       state = 'idle';
     }
   }
-}
-
-async function runOfflinePipeline(audioData: Float32Array, responseEl: Element | null): Promise<void> {
-  await pipeline.processTurn(audioData, {
-    maxTokens: 1024,
-    temperature: 0.7,
-    systemPrompt:
-      'You are a helpful voice assistant. Keep responses concise — 1-3 sentences. Be conversational and friendly.',
-  }, {
-    onStateChange: (s) => {
-      if (s === PipelineState.ProcessingSTT) setStatus('Transcribing...');
-      else if (s === PipelineState.GeneratingResponse) setStatus('Thinking...');
-      else if (s === PipelineState.PlayingTTS) {
-        state = 'speaking';
-        setStatus('Speaking...');
-      }
-    },
-
-    onTranscription: (text) => {
-      if (!text) {
-        console.log('[Voice] No speech detected');
-        return;
-      }
-      console.log(`[Voice] STT result: "${text}"`);
-      setResponse(`<div class="text-secondary mb-sm"><strong>You:</strong> ${escapeHtml(text)}</div>`);
-      setStatus('Thinking...');
-      if (responseEl) {
-        responseEl.innerHTML += `<div><strong>Assistant:</strong> <span id="voice-llm-output"></span></div>`;
-      }
-    },
-
-    onResponseToken: (_token, accumulated) => {
-      const outputSpan = container.querySelector('#voice-llm-output');
-      if (outputSpan) outputSpan.textContent = accumulated;
-    },
-
-    onResponseComplete: (text, llmResult) => {
-      const outputSpan = container.querySelector('#voice-llm-output');
-      if (outputSpan) outputSpan.textContent = text;
-      console.log(`[Voice] LLM: ${llmResult.tokensUsed} tokens, ${llmResult.tokensPerSecond.toFixed(1)} tok/s`);
-    },
-
-    onSynthesisComplete: async (audio, sampleRate) => {
-      console.log(`[Voice] TTS: playing ${(audio.length / sampleRate).toFixed(1)}s of audio`);
-      const player = new AudioPlayback({ sampleRate });
-      await player.play(audio, sampleRate);
-      player.dispose();
-    },
-
-    onError: (err) => {
-      console.error('[Voice] Pipeline error:', err);
-      setStatus(`Error: ${err.message}`);
-    },
-  });
-}
-
-async function runOnlinePipeline(audioData: Float32Array, responseEl: Element | null): Promise<void> {
-  // STT
-  setStatus('Transcribing...');
-  const wavBlob = pcmToWavBlob(audioData, 16000);
-  const sttResult = await veniceTranscribe(wavBlob, selectedOnlineSTTModelId ?? 'openai/whisper-large-v3');
-  const transcriptionText = sttResult.text;
-
-  if (!transcriptionText.trim()) {
-    console.log('[Voice] No speech detected (online)');
-    setStatus('No speech detected');
-    return;
-  }
-
-  console.log(`[Voice] Online STT result: "${transcriptionText}"`);
-  setResponse(`<div class="text-secondary mb-sm"><strong>You:</strong> ${escapeHtml(transcriptionText)}</div>`);
-  setStatus('Thinking...');
-  if (responseEl) {
-    responseEl.innerHTML += `<div><strong>Assistant:</strong> <span id="voice-llm-output"></span></div>`;
-  }
-
-  // LLM (streaming)
-  const llmMessages = [
-    { role: 'system', content: 'You are a helpful voice assistant. Keep responses concise — 1-3 sentences. Be conversational and friendly.' },
-    { role: 'user', content: transcriptionText },
-  ];
-  const llmStream = await chatStream(llmMessages, selectedOnlineLLMModelId ?? 'llama-3.3-70b', {
-    maxTokens: 1024,
-    temperature: 0.7,
-  });
-
-  let fullResponse = '';
-  const reader = llmStream.getReader();
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      fullResponse += value;
-      const outputSpan = container.querySelector('#voice-llm-output');
-      if (outputSpan) outputSpan.textContent = fullResponse;
-    }
-  } finally {
-    reader.releaseLock();
-  }
-
-  console.log(`[Voice] Online LLM response: "${fullResponse}"`);
-
-  // TTS
-  setStatus('Speaking...');
-  state = 'speaking';
-  const ttsResult = await veniceSynthesize(fullResponse, selectedOnlineTTSModelId ?? 'tts-kokoro', {
-    voice: 'af_sky',
-  });
-  const player = new AudioPlayback({ sampleRate: ttsResult.sampleRate });
-  await player.play(ttsResult.audioData, ttsResult.sampleRate);
-  player.dispose();
-  console.log(`[Voice] Online TTS: played ${(ttsResult.audioData.length / ttsResult.sampleRate).toFixed(1)}s of audio`);
 }
 
 function escapeHtml(str: string): string {
