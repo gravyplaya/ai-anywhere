@@ -585,6 +585,13 @@ set(RAC_EXPORTED_FUNCTIONS
     "_rac_wasm_sizeof_embeddings_options"
     "_rac_wasm_sizeof_embeddings_result"
 
+    # Structured Output Offsets
+    "_rac_wasm_offsetof_structured_output_config_json_schema"
+    "_rac_wasm_offsetof_structured_output_config_include_schema_in_prompt"
+    "_rac_wasm_offsetof_structured_output_validation_is_valid"
+    "_rac_wasm_offsetof_structured_output_validation_error_message"
+    "_rac_wasm_offsetof_structured_output_validation_extracted_json"
+
     # Dev config WASM wrappers
     "_rac_wasm_dev_config_is_available"
     "_rac_wasm_dev_config_get_supabase_url"
