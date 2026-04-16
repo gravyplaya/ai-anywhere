@@ -5,11 +5,22 @@
  * Pipeline flow:  Mic → STT → LLM (streaming) → TTS → Speaker
  */
 
-import type { TabLifecycle } from '../app';
-import { showModelSelectionSheet } from '../components/model-selection';
-import { ModelManager, ModelCategory, ensureVADLoaded } from '../services/model-manager';
-import { VoicePipeline, PipelineState, AudioCapture, AudioPlayback, SpeechActivity } from '../../../../../sdk/runanywhere-web/packages/core/src/index';
-import { VAD } from '../../../../../sdk/runanywhere-web/packages/onnx/src/index';
+import type { TabLifecycle } from "../app";
+import { showModelSelectionSheet } from "../components/model-selection";
+import {
+  ModelManager,
+  ModelCategory,
+  ensureVADLoaded,
+} from "../services/model-manager";
+import { getSettings } from "./settings";
+import {
+  VoicePipeline,
+  PipelineState,
+  AudioCapture,
+  AudioPlayback,
+  SpeechActivity,
+} from "../../../../../sdk/runanywhere-web/packages/core/src/index";
+import { VAD } from "../../../../../sdk/runanywhere-web/packages/onnx/src/index";
 
 /** Shared AudioCapture instance for this view (replaces app-level MicCapture singleton). */
 const micCapture = new AudioCapture();
@@ -29,9 +40,24 @@ interface PipelineStep {
 }
 
 const PIPELINE_STEPS: PipelineStep[] = [
-  { modality: ModelCategory.SpeechRecognition, elementId: 'voice-setup-stt', title: 'Speech-to-Text', defaultStatus: 'Select STT model' },
-  { modality: ModelCategory.Language, elementId: 'voice-setup-llm', title: 'Language Model', defaultStatus: 'Select LLM model' },
-  { modality: ModelCategory.SpeechSynthesis, elementId: 'voice-setup-tts', title: 'Text-to-Speech', defaultStatus: 'Select TTS model' },
+  {
+    modality: ModelCategory.SpeechRecognition,
+    elementId: "voice-setup-stt",
+    title: "Speech-to-Text",
+    defaultStatus: "Select STT model",
+  },
+  {
+    modality: ModelCategory.Language,
+    elementId: "voice-setup-llm",
+    title: "Language Model",
+    defaultStatus: "Select LLM model",
+  },
+  {
+    modality: ModelCategory.SpeechSynthesis,
+    elementId: "voice-setup-tts",
+    title: "Text-to-Speech",
+    defaultStatus: "Select TTS model",
+  },
 ];
 
 // Minimum audio segment (samples at 16kHz) to process — ~0.5s
@@ -41,10 +67,10 @@ const MIN_AUDIO_SAMPLES = 8000;
 // State
 // ---------------------------------------------------------------------------
 
-type VoiceState = 'setup' | 'idle' | 'listening' | 'processing' | 'speaking';
+type VoiceState = "setup" | "idle" | "listening" | "processing" | "speaking";
 
 let container: HTMLElement;
-let state: VoiceState = 'setup';
+let state: VoiceState = "setup";
 let canvas: HTMLCanvasElement;
 let animationFrame: number | null = null;
 let particles: Particle[] = [];
@@ -57,8 +83,10 @@ let vadActive = false;
 let unsubscribeVAD: (() => void) | null = null;
 
 interface Particle {
-  x: number; y: number;
-  vx: number; vy: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
   radius: number;
   color: string;
   alpha: number;
@@ -144,32 +172,34 @@ export function initVoiceTab(el: HTMLElement): TabLifecycle {
     </div>
   `;
 
-  canvas = container.querySelector('#voice-particle-canvas')!;
+  canvas = container.querySelector("#voice-particle-canvas")!;
 
   // Setup card clicks — open model selection for each modality.
   // coexist: true because Voice needs STT + LLM + TTS loaded simultaneously.
-  container.querySelector('#voice-setup-stt')!.addEventListener('click', () => {
+  container.querySelector("#voice-setup-stt")!.addEventListener("click", () => {
     showModelSelectionSheet(ModelCategory.SpeechRecognition, { coexist: true });
   });
-  container.querySelector('#voice-setup-llm')!.addEventListener('click', () => {
+  container.querySelector("#voice-setup-llm")!.addEventListener("click", () => {
     showModelSelectionSheet(ModelCategory.Language, { coexist: true });
   });
-  container.querySelector('#voice-setup-tts')!.addEventListener('click', () => {
+  container.querySelector("#voice-setup-tts")!.addEventListener("click", () => {
     showModelSelectionSheet(ModelCategory.SpeechSynthesis, { coexist: true });
   });
 
   // Start Voice Assistant button
-  container.querySelector('#voice-start-btn')!.addEventListener('click', () => {
+  container.querySelector("#voice-start-btn")!.addEventListener("click", () => {
     transitionToVoiceInterface();
   });
 
   // Back button from voice interface → setup
-  container.querySelector('#voice-back-btn')!.addEventListener('click', () => {
+  container.querySelector("#voice-back-btn")!.addEventListener("click", () => {
     transitionToSetup();
   });
 
   // Mic button
-  container.querySelector('#voice-mic-btn')!.addEventListener('click', toggleMic);
+  container
+    .querySelector("#voice-mic-btn")!
+    .addEventListener("click", toggleMic);
 
   // Subscribe to model changes so we can update pipeline state
   ModelManager.onChange(() => refreshPipelineUI());
@@ -183,7 +213,7 @@ export function initVoiceTab(el: HTMLElement): TabLifecycle {
       // Stop mic, VAD, particles, and cancel any in-flight generation
       if (sessionActive) {
         stopSession();
-        console.log('[Voice] Tab deactivated — session stopped');
+        console.log("[Voice] Tab deactivated — session stopped");
       }
     },
   };
@@ -195,7 +225,9 @@ export function initVoiceTab(el: HTMLElement): TabLifecycle {
 
 /** Refresh setup card states and start button based on loaded models */
 function refreshPipelineUI(): void {
-  const startBtn = container.querySelector('#voice-start-btn') as HTMLButtonElement | null;
+  const startBtn = container.querySelector(
+    "#voice-start-btn",
+  ) as HTMLButtonElement | null;
   if (!startBtn) return;
 
   let allReady = true;
@@ -204,31 +236,31 @@ function refreshPipelineUI(): void {
     const card = container.querySelector(`#${step.elementId}`);
     if (!card) continue;
 
-    const statusEl = card.querySelector('.setup-card-status');
-    const stepNumber = card.querySelector('.setup-step-number');
+    const statusEl = card.querySelector(".setup-card-status");
+    const stepNumber = card.querySelector(".setup-step-number");
     const loadedModel = ModelManager.getLoadedModel(step.modality);
 
     if (loadedModel) {
       // Model is loaded — show checkmark and model name
       if (statusEl) {
         statusEl.textContent = loadedModel.name;
-        (statusEl as HTMLElement).classList.add('text-green');
+        (statusEl as HTMLElement).classList.add("text-green");
       }
       if (stepNumber) {
         stepNumber.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>`;
       }
-      card.classList.add('loaded');
+      card.classList.add("loaded");
     } else {
       // Not loaded — show default state
       if (statusEl) {
         statusEl.textContent = step.defaultStatus;
-        (statusEl as HTMLElement).classList.remove('text-green');
+        (statusEl as HTMLElement).classList.remove("text-green");
       }
       const stepIdx = PIPELINE_STEPS.indexOf(step);
       if (stepNumber) {
         stepNumber.textContent = String(stepIdx + 1);
       }
-      card.classList.remove('loaded');
+      card.classList.remove("loaded");
       allReady = false;
     }
   }
@@ -238,21 +270,21 @@ function refreshPipelineUI(): void {
 
 /** Switch from pipeline setup → voice interface */
 function transitionToVoiceInterface(): void {
-  state = 'idle';
-  const setup = container.querySelector('#voice-setup') as HTMLElement;
-  const iface = container.querySelector('#voice-interface') as HTMLElement;
-  if (setup) setup.classList.add('hidden');
-  if (iface) iface.classList.remove('hidden');
+  state = "idle";
+  const setup = container.querySelector("#voice-setup") as HTMLElement;
+  const iface = container.querySelector("#voice-interface") as HTMLElement;
+  if (setup) setup.classList.add("hidden");
+  if (iface) iface.classList.remove("hidden");
 }
 
 /** Switch from voice interface → pipeline setup */
 function transitionToSetup(): void {
   stopSession();
-  state = 'setup';
-  const setup = container.querySelector('#voice-setup') as HTMLElement;
-  const iface = container.querySelector('#voice-interface') as HTMLElement;
-  if (setup) setup.classList.remove('hidden');
-  if (iface) iface.classList.add('hidden');
+  state = "setup";
+  const setup = container.querySelector("#voice-setup") as HTMLElement;
+  const iface = container.querySelector("#voice-interface") as HTMLElement;
+  if (setup) setup.classList.remove("hidden");
+  if (iface) iface.classList.add("hidden");
 }
 
 // ---------------------------------------------------------------------------
@@ -260,18 +292,18 @@ function transitionToSetup(): void {
 // ---------------------------------------------------------------------------
 
 function setStatus(text: string): void {
-  const el = container.querySelector('#voice-status');
+  const el = container.querySelector("#voice-status");
   if (el) el.textContent = text;
 }
 
 function setResponse(html: string): void {
-  const el = container.querySelector('#voice-response');
+  const el = container.querySelector("#voice-response");
   if (el) el.innerHTML = html;
 }
 
 function setMicActive(active: boolean): void {
-  const micBtn = container.querySelector('#voice-mic-btn');
-  if (micBtn) micBtn.classList.toggle('listening', active);
+  const micBtn = container.querySelector("#voice-mic-btn");
+  if (micBtn) micBtn.classList.toggle("listening", active);
 }
 
 // ---------------------------------------------------------------------------
@@ -299,7 +331,7 @@ async function toggleMic(): Promise<void> {
 async function startSession(): Promise<void> {
   sessionActive = true;
   setMicActive(true);
-  setResponse('');
+  setResponse("");
   await startListening();
 }
 
@@ -311,21 +343,21 @@ function stopSession(): void {
   VAD.reset();
   setMicActive(false);
   stopParticles();
-  state = 'idle';
-  setStatus('Tap to speak');
+  state = "idle";
+  setStatus("Tap to speak");
 }
 
 /** Begin capturing audio and monitoring with SDK VAD */
 async function startListening(): Promise<void> {
   if (!sessionActive) return;
 
-  state = 'listening';
-  setStatus('Listening...');
+  state = "listening";
+  setStatus("Listening...");
 
   // Ensure Silero VAD model is loaded (auto-downloads, ~5MB)
   const vadReady = await ensureVADLoaded();
   if (!vadReady) {
-    setStatus('Failed to load VAD model');
+    setStatus("Failed to load VAD model");
     stopSession();
     return;
   }
@@ -336,7 +368,7 @@ async function startListening(): Promise<void> {
     startParticles();
     startVoiceVAD();
   } catch {
-    setStatus('Microphone access denied');
+    setStatus("Microphone access denied");
     stopSession();
   }
 }
@@ -347,7 +379,7 @@ async function startListening(): Promise<void> {
 
 /** AudioCapture onChunk callback — feeds audio to SDK VAD. */
 function onVoiceChunk(samples: Float32Array): void {
-  if (!vadActive || state !== 'listening') return;
+  if (!vadActive || state !== "listening") return;
   VAD.processSamples(samples);
 }
 
@@ -357,17 +389,19 @@ function startVoiceVAD(): void {
 
   // Subscribe to speech activity events from the SDK VAD
   unsubscribeVAD = VAD.onSpeechActivity((activity) => {
-    if (!sessionActive || state !== 'listening') return;
+    if (!sessionActive || state !== "listening") return;
 
     if (activity === SpeechActivity.Started) {
-      console.log('[Voice] Speech started (Silero)');
+      console.log("[Voice] Speech started (Silero)");
     } else if (activity === SpeechActivity.Ended) {
-      console.log('[Voice] Speech ended (Silero)');
+      console.log("[Voice] Speech ended (Silero)");
 
       // Pop the completed speech segment
       const segment = VAD.popSpeechSegment();
       if (segment && segment.samples.length >= MIN_AUDIO_SAMPLES) {
-        console.log(`[Voice] Processing segment: ${segment.samples.length} samples (${(segment.samples.length / 16000).toFixed(1)}s)`);
+        console.log(
+          `[Voice] Processing segment: ${segment.samples.length} samples (${(segment.samples.length / 16000).toFixed(1)}s)`,
+        );
         // Stop mic during processing (will restart after TTS)
         stopVoiceVAD();
         micCapture.stop();
@@ -377,12 +411,15 @@ function startVoiceVAD(): void {
     }
   });
 
-  console.log('[Voice] Started SDK VAD monitoring');
+  console.log("[Voice] Started SDK VAD monitoring");
 }
 
 function stopVoiceVAD(): void {
   vadActive = false;
-  if (unsubscribeVAD) { unsubscribeVAD(); unsubscribeVAD = null; }
+  if (unsubscribeVAD) {
+    unsubscribeVAD();
+    unsubscribeVAD = null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -393,89 +430,103 @@ function stopVoiceVAD(): void {
 // ---------------------------------------------------------------------------
 
 async function runPipeline(audioData: Float32Array): Promise<void> {
-  state = 'processing';
+  state = "processing";
 
   try {
-    setStatus('Transcribing...');
-    console.log(`[Voice] STT: ${(audioData.length / 16000).toFixed(1)}s of audio`);
+    setStatus("Transcribing...");
+    console.log(
+      `[Voice] STT: ${(audioData.length / 16000).toFixed(1)}s of audio`,
+    );
 
     // Prepare a response container for streaming LLM output
-    const responseEl = container.querySelector('#voice-response');
+    const responseEl = container.querySelector("#voice-response");
 
-    await pipeline.processTurn(audioData, {
-      maxTokens: 1024,
-      temperature: 0.7,
-      systemPrompt:
-        'You are a helpful voice assistant. Keep responses concise — 1-3 sentences. Be conversational and friendly.',
-    }, {
-      onStateChange: (s) => {
-        if (s === PipelineState.ProcessingSTT) setStatus('Transcribing...');
-        else if (s === PipelineState.GeneratingResponse) setStatus('Thinking...');
-        else if (s === PipelineState.PlayingTTS) {
-          state = 'speaking';
-          setStatus('Speaking...');
-        }
+    const s = getSettings();
+    await pipeline.processTurn(
+      audioData,
+      {
+        maxTokens: s.maxTokens,
+        temperature: s.temperature,
+        systemPrompt:
+          "You are a helpful voice assistant. Keep responses concise — 1-3 sentences. Be conversational and friendly.",
       },
+      {
+        onStateChange: (s) => {
+          if (s === PipelineState.ProcessingSTT) setStatus("Transcribing...");
+          else if (s === PipelineState.GeneratingResponse)
+            setStatus("Thinking...");
+          else if (s === PipelineState.PlayingTTS) {
+            state = "speaking";
+            setStatus("Speaking...");
+          }
+        },
 
-      onTranscription: (text) => {
-        if (!text) {
-          console.log('[Voice] No speech detected');
-          return;
-        }
-        console.log(`[Voice] STT result: "${text}"`);
-        setResponse(`<div class="text-secondary mb-sm"><strong>You:</strong> ${escapeHtml(text)}</div>`);
-        setStatus('Thinking...');
-        // Append streaming response container
-        if (responseEl) {
-          responseEl.innerHTML += `<div><strong>Assistant:</strong> <span id="voice-llm-output"></span></div>`;
-        }
-      },
+        onTranscription: (text) => {
+          if (!text) {
+            console.log("[Voice] No speech detected");
+            return;
+          }
+          console.log(`[Voice] STT result: "${text}"`);
+          setResponse(
+            `<div class="text-secondary mb-sm"><strong>You:</strong> ${escapeHtml(text)}</div>`,
+          );
+          setStatus("Thinking...");
+          // Append streaming response container
+          if (responseEl) {
+            responseEl.innerHTML += `<div><strong>Assistant:</strong> <span id="voice-llm-output"></span></div>`;
+          }
+        },
 
-      onResponseToken: (_token, accumulated) => {
-        const outputSpan = container.querySelector('#voice-llm-output');
-        if (outputSpan) outputSpan.textContent = accumulated;
-      },
+        onResponseToken: (_token, accumulated) => {
+          const outputSpan = container.querySelector("#voice-llm-output");
+          if (outputSpan) outputSpan.textContent = accumulated;
+        },
 
-      onResponseComplete: (text, llmResult) => {
-        const outputSpan = container.querySelector('#voice-llm-output');
-        if (outputSpan) outputSpan.textContent = text;
-        console.log(`[Voice] LLM: ${llmResult.tokensUsed} tokens, ${llmResult.tokensPerSecond.toFixed(1)} tok/s`);
-      },
+        onResponseComplete: (text, llmResult) => {
+          const outputSpan = container.querySelector("#voice-llm-output");
+          if (outputSpan) outputSpan.textContent = text;
+          console.log(
+            `[Voice] LLM: ${llmResult.tokensUsed} tokens, ${llmResult.tokensPerSecond.toFixed(1)} tok/s`,
+          );
+        },
 
-      onSynthesisComplete: async (audio, sampleRate) => {
-        console.log(`[Voice] TTS: playing ${(audio.length / sampleRate).toFixed(1)}s of audio`);
-        const player = new AudioPlayback({ sampleRate });
-        await player.play(audio, sampleRate);
-        player.dispose();
-      },
+        onSynthesisComplete: async (audio, sampleRate) => {
+          console.log(
+            `[Voice] TTS: playing ${(audio.length / sampleRate).toFixed(1)}s of audio`,
+          );
+          const player = new AudioPlayback({ sampleRate });
+          await player.play(audio, sampleRate);
+          player.dispose();
+        },
 
-      onError: (err) => {
-        console.error('[Voice] Pipeline error:', err);
-        setStatus(`Error: ${err.message}`);
+        onError: (err) => {
+          console.error("[Voice] Pipeline error:", err);
+          setStatus(`Error: ${err.message}`);
+        },
       },
-    });
+    );
 
     // Resume listening (continuous mode) or go idle
     if (sessionActive) {
       await startListening();
     } else {
-      state = 'idle';
-      setStatus('Tap to speak');
+      state = "idle";
+      setStatus("Tap to speak");
     }
   } catch (err) {
-    console.error('[Voice] Pipeline error:', err);
+    console.error("[Voice] Pipeline error:", err);
     const msg = err instanceof Error ? err.message : String(err);
     setStatus(`Error: ${msg}`);
     if (sessionActive) {
       await startListening();
     } else {
-      state = 'idle';
+      state = "idle";
     }
   }
 }
 
 function escapeHtml(str: string): string {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 // ---------------------------------------------------------------------------
@@ -499,8 +550,8 @@ function resizeCanvas(): void {
   const rect = canvas.parentElement!.getBoundingClientRect();
   canvas.width = rect.width * devicePixelRatio;
   canvas.height = rect.height * devicePixelRatio;
-  canvas.style.width = rect.width + 'px';
-  canvas.style.height = rect.height + 'px';
+  canvas.style.width = rect.width + "px";
+  canvas.style.height = rect.height + "px";
 }
 
 function initParticles(): void {
@@ -508,11 +559,11 @@ function initParticles(): void {
   const cx = canvas.width / 2;
   const cy = canvas.height / 2;
   const warmColors = [
-    'rgba(255, 85, 0,',
-    'rgba(255, 140, 50,',
-    'rgba(230, 69, 0,',
-    'rgba(255, 170, 80,',
-    'rgba(200, 100, 30,',
+    "rgba(255, 85, 0,",
+    "rgba(255, 140, 50,",
+    "rgba(230, 69, 0,",
+    "rgba(255, 170, 80,",
+    "rgba(200, 100, 30,",
   ];
 
   for (let i = 0; i < 60; i++) {
@@ -561,7 +612,7 @@ function updateParticles(level: number): void {
 }
 
 function animateParticles(): void {
-  const ctx = canvas.getContext('2d')!;
+  const ctx = canvas.getContext("2d")!;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   for (const p of particles) {

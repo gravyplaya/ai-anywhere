@@ -9,11 +9,19 @@
  *   - Model selection for multimodal models
  */
 
-import type { TabLifecycle } from '../app';
-import { ModelManager, ModelCategory, type ModelInfo } from '../services/model-manager';
-import { showModelSelectionSheet } from '../components/model-selection';
-import { VideoCapture, type CapturedFrame } from '../../../../../sdk/runanywhere-web/packages/core/src/index';
-import { VLMWorkerBridge } from '../../../../../sdk/runanywhere-web/packages/llamacpp/src/index';
+import type { TabLifecycle } from "../app";
+import {
+  ModelManager,
+  ModelCategory,
+  type ModelInfo,
+} from "../services/model-manager";
+import { showModelSelectionSheet } from "../components/model-selection";
+import { getSettings } from "./settings";
+import {
+  VideoCapture,
+  type CapturedFrame,
+} from "../../../../../sdk/runanywhere-web/packages/core/src/index";
+import { VLMWorkerBridge } from "../../../../../sdk/runanywhere-web/packages/llamacpp/src/index";
 
 // ---------------------------------------------------------------------------
 // Constants (matching iOS VLMViewModel defaults)
@@ -23,8 +31,9 @@ const AUTO_STREAM_INTERVAL_MS = 2500;
 const SINGLE_SHOT_MAX_TOKENS = 60;
 /** Keep tokens low for live mode — each token costs ~1-2s in WASM */
 const AUTO_STREAM_MAX_TOKENS = 30;
-const SINGLE_SHOT_PROMPT = 'Describe what you see briefly.';
-const AUTO_STREAM_PROMPT = 'What is in this image? Answer in one short sentence.';
+const SINGLE_SHOT_PROMPT = "Describe what you see briefly.";
+const AUTO_STREAM_PROMPT =
+  "What is in this image? Answer in one short sentence.";
 
 /**
  * Max dimension for captured frames sent to VLM.
@@ -51,12 +60,12 @@ let metricsEl: HTMLElement;
 let copyBtn: HTMLElement;
 
 /** SDK VideoCapture manages camera lifecycle + frame extraction. */
-const camera = new VideoCapture({ facingMode: 'environment' });
+const camera = new VideoCapture({ facingMode: "environment" });
 
 let isProcessing = false;
 let isLiveMode = false;
 let liveIntervalId: ReturnType<typeof setTimeout> | null = null;
-let currentDescription = '';
+let currentDescription = "";
 
 // ---------------------------------------------------------------------------
 // Init
@@ -144,23 +153,27 @@ export function initVisionTab(el: HTMLElement): TabLifecycle {
   buildFloatingCircles();
 
   // Cache references
-  overlayEl = container.querySelector('#vision-model-overlay')!;
-  toolbarModelEl = container.querySelector('#vision-toolbar-model')!;
-  descriptionEl = container.querySelector('#vision-description-text')!;
-  captureBtn = container.querySelector('#vision-capture-btn')!;
-  liveToggleBtn = container.querySelector('#vision-live-btn')!;
-  liveBadge = container.querySelector('#vision-live-badge')!;
-  processingOverlay = container.querySelector('#vision-processing-overlay')!;
-  metricsEl = container.querySelector('#vision-metrics')!;
-  copyBtn = container.querySelector('#vision-copy-btn')!;
+  overlayEl = container.querySelector("#vision-model-overlay")!;
+  toolbarModelEl = container.querySelector("#vision-toolbar-model")!;
+  descriptionEl = container.querySelector("#vision-description-text")!;
+  captureBtn = container.querySelector("#vision-capture-btn")!;
+  liveToggleBtn = container.querySelector("#vision-live-btn")!;
+  liveBadge = container.querySelector("#vision-live-badge")!;
+  processingOverlay = container.querySelector("#vision-processing-overlay")!;
+  metricsEl = container.querySelector("#vision-metrics")!;
+  copyBtn = container.querySelector("#vision-copy-btn")!;
 
   // Event listeners
-  captureBtn.addEventListener('click', onCaptureClick);
-  liveToggleBtn.addEventListener('click', toggleLiveMode);
-  container.querySelector('#vision-model-btn')!.addEventListener('click', openModelSheet);
-  container.querySelector('#vision-get-started-btn')!.addEventListener('click', onGetStarted);
-  toolbarModelEl.addEventListener('click', openModelSheet);
-  copyBtn.addEventListener('click', copyDescription);
+  captureBtn.addEventListener("click", onCaptureClick);
+  liveToggleBtn.addEventListener("click", toggleLiveMode);
+  container
+    .querySelector("#vision-model-btn")!
+    .addEventListener("click", openModelSheet);
+  container
+    .querySelector("#vision-get-started-btn")!
+    .addEventListener("click", onGetStarted);
+  toolbarModelEl.addEventListener("click", openModelSheet);
+  copyBtn.addEventListener("click", copyDescription);
 
   // Subscribe to model changes
   ModelManager.onChange(onModelsChanged);
@@ -173,14 +186,14 @@ export function initVisionTab(el: HTMLElement): TabLifecycle {
       stopLiveMode();
       // Release the camera hardware to free resources
       camera.stop();
-      console.log('[Vision] Tab deactivated — camera & live mode stopped');
+      console.log("[Vision] Tab deactivated — camera & live mode stopped");
     },
     onActivate(): void {
       // Re-open the camera if a model is loaded (user had it running before)
       const loaded = ModelManager.getLoadedModel(ModelCategory.Multimodal);
       if (loaded && !camera.isCapturing) {
         startCamera();
-        console.log('[Vision] Tab activated — camera restarted');
+        console.log("[Vision] Tab activated — camera restarted");
       }
     },
   };
@@ -191,11 +204,11 @@ export function initVisionTab(el: HTMLElement): TabLifecycle {
 // ---------------------------------------------------------------------------
 
 function buildFloatingCircles(): void {
-  const bg = container.querySelector('#vision-floating-bg')!;
-  const colors = ['#8B5CF6', '#3B82F6', '#EC4899', '#10B981', '#F59E0B'];
+  const bg = container.querySelector("#vision-floating-bg")!;
+  const colors = ["#8B5CF6", "#3B82F6", "#EC4899", "#10B981", "#F59E0B"];
   for (let i = 0; i < 8; i++) {
-    const circle = document.createElement('div');
-    circle.className = 'floating-circle';
+    const circle = document.createElement("div");
+    circle.className = "floating-circle";
     const size = 60 + Math.random() * 120;
     circle.style.cssText = `
       width:${size}px; height:${size}px;
@@ -219,20 +232,24 @@ function openModelSheet(): void {
 
 function onModelsChanged(_models: ModelInfo[]): void {
   const loaded = ModelManager.getLoadedModel(ModelCategory.Multimodal);
-  const textSpan = toolbarModelEl.querySelector('#vision-toolbar-model-text');
+  const textSpan = toolbarModelEl.querySelector("#vision-toolbar-model-text");
   if (loaded) {
     if (textSpan) textSpan.textContent = loaded.name;
     // Model is loaded — show the main camera UI (camera may or may not be active)
-    overlayEl.classList.add('hidden');
-    (container.querySelector('#vision-main') as HTMLElement).classList.remove('hidden');
+    overlayEl.classList.add("hidden");
+    (container.querySelector("#vision-main") as HTMLElement).classList.remove(
+      "hidden",
+    );
     // Auto-start camera if not already running
     if (!camera.isCapturing) {
       startCamera();
     }
   } else {
-    overlayEl.classList.remove('hidden');
-    if (textSpan) textSpan.textContent = 'Select Vision Model';
-    (container.querySelector('#vision-main') as HTMLElement).classList.add('hidden');
+    overlayEl.classList.remove("hidden");
+    if (textSpan) textSpan.textContent = "Select Vision Model";
+    (container.querySelector("#vision-main") as HTMLElement).classList.add(
+      "hidden",
+    );
     stopLiveMode();
     camera.stop();
   }
@@ -265,24 +282,28 @@ async function startCamera(): Promise<void> {
     await camera.start();
 
     // Attach the VideoCapture's video element to the DOM for live preview
-    const cameraContainer = container.querySelector('#vision-camera-container');
+    const cameraContainer = container.querySelector("#vision-camera-container");
     if (cameraContainer && !cameraContainer.contains(camera.videoElement)) {
       // Re-insert the processing overlay after the video element
-      const overlay = container.querySelector('#vision-processing-overlay');
-      camera.videoElement.id = 'vision-video';
+      const overlay = container.querySelector("#vision-processing-overlay");
+      camera.videoElement.id = "vision-video";
       cameraContainer.insertBefore(camera.videoElement, overlay);
     }
 
-    overlayEl.classList.add('hidden');
-    (container.querySelector('#vision-main') as HTMLElement).classList.remove('hidden');
+    overlayEl.classList.add("hidden");
+    (container.querySelector("#vision-main") as HTMLElement).classList.remove(
+      "hidden",
+    );
 
-    console.log('[Vision] Camera started');
+    console.log("[Vision] Camera started");
   } catch (err) {
-    console.error('[Vision] Camera access denied:', err);
+    console.error("[Vision] Camera access denied:", err);
     descriptionEl.innerHTML = `<span class="text-red">Camera access denied. Please allow camera access in your browser settings.</span>`;
     // Still show the main UI so the user can retry
-    overlayEl.classList.add('hidden');
-    (container.querySelector('#vision-main') as HTMLElement).classList.remove('hidden');
+    overlayEl.classList.add("hidden");
+    (container.querySelector("#vision-main") as HTMLElement).classList.remove(
+      "hidden",
+    );
   }
 }
 
@@ -313,14 +334,14 @@ function toggleLiveMode(): void {
 
 function startLiveMode(): void {
   isLiveMode = true;
-  liveToggleBtn.classList.add('active');
-  liveBadge.classList.remove('hidden');
-  captureBtn.classList.add('live');
+  liveToggleBtn.classList.add("active");
+  liveBadge.classList.remove("hidden");
+  captureBtn.classList.add("live");
   captureBtn.innerHTML = `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="28" height="28"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
   `;
 
-  console.log('[Vision] Live mode started');
+  console.log("[Vision] Live mode started");
 
   // Immediately describe the first frame
   describeCurrent(AUTO_STREAM_PROMPT, AUTO_STREAM_MAX_TOKENS);
@@ -344,21 +365,24 @@ function stopLiveMode(): void {
     clearInterval(liveIntervalId);
     liveIntervalId = null;
   }
-  liveToggleBtn.classList.remove('active');
-  liveBadge.classList.add('hidden');
-  captureBtn.classList.remove('live');
+  liveToggleBtn.classList.remove("active");
+  liveBadge.classList.add("hidden");
+  captureBtn.classList.remove("live");
   captureBtn.innerHTML = `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="28" height="28"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 1 1 7.072 0l-.548.547A3.374 3.374 0 0 0 12 18.469V19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
   `;
 
-  console.log('[Vision] Live mode stopped');
+  console.log("[Vision] Live mode stopped");
 }
 
 // ---------------------------------------------------------------------------
 // Describe Current Frame
 // ---------------------------------------------------------------------------
 
-async function describeCurrent(prompt: string, maxTokens: number): Promise<void> {
+async function describeCurrent(
+  prompt: string,
+  maxTokens: number,
+): Promise<void> {
   if (isProcessing) return;
 
   const loaded = ModelManager.getLoadedModel(ModelCategory.Multimodal);
@@ -375,8 +399,13 @@ async function describeCurrent(prompt: string, maxTokens: number): Promise<void>
     return;
   }
 
-  console.log(`[Vision] Captured frame: ${frame.width}x${frame.height} (${(frame.rgbPixels.length / 1024).toFixed(0)} KB RGB, ${isLiveMode ? 'live' : 'single'})`);
-  await processFrame(frame, prompt, maxTokens);
+  const s = getSettings();
+  const effectiveMaxTokens = Math.min(s.maxTokens, maxTokens);
+
+  console.log(
+    `[Vision] Captured frame: ${frame.width}x${frame.height} (${(frame.rgbPixels.length / 1024).toFixed(0)} KB RGB, ${isLiveMode ? "live" : "single"})`,
+  );
+  await processFrame(frame, prompt, effectiveMaxTokens);
 }
 
 /**
@@ -385,15 +414,19 @@ async function describeCurrent(prompt: string, maxTokens: number): Promise<void>
  * Runs inference OFF the main thread so the camera feed, UI animations,
  * and event loop stay fully responsive during the 30–100s processing.
  */
-async function processFrame(frame: CapturedFrame, prompt: string, maxTokens: number): Promise<void> {
+async function processFrame(
+  frame: CapturedFrame,
+  prompt: string,
+  maxTokens: number,
+): Promise<void> {
   isProcessing = true;
-  processingOverlay.classList.remove('hidden');
+  processingOverlay.classList.remove("hidden");
 
   const t0 = performance.now();
 
   // Live elapsed-time ticker (updates every 500ms while processing)
   let tickerId: ReturnType<typeof setInterval> | null = null;
-  const timerSpan = processingOverlay.querySelector('span');
+  const timerSpan = processingOverlay.querySelector("span");
   if (timerSpan) {
     tickerId = setInterval(() => {
       const sec = ((performance.now() - t0) / 1000).toFixed(0);
@@ -405,15 +438,20 @@ async function processFrame(frame: CapturedFrame, prompt: string, maxTokens: num
     const workerBridge = VLMWorkerBridge.shared;
 
     if (!workerBridge.isModelLoaded) {
-      throw new Error('VLM model not loaded in Worker');
+      throw new Error("VLM model not loaded in Worker");
     }
 
+    const s = getSettings();
     const result = await workerBridge.process(
       frame.rgbPixels,
       frame.width,
       frame.height,
       prompt,
-      { maxTokens, temperature: 0.7, systemPrompt: 'You are a helpful assistant.' },
+      {
+        maxTokens,
+        temperature: s.temperature,
+        systemPrompt: "You are a helpful assistant.",
+      },
     );
 
     // Compute metrics from JS wall clock
@@ -424,10 +462,10 @@ async function processFrame(frame: CapturedFrame, prompt: string, maxTokens: num
     // Update description
     currentDescription = result.text;
     descriptionEl.textContent = currentDescription;
-    copyBtn.classList.toggle('hidden', !currentDescription);
+    copyBtn.classList.toggle("hidden", !currentDescription);
 
     // Show metrics
-    metricsEl.classList.remove('hidden');
+    metricsEl.classList.remove("hidden");
     metricsEl.innerHTML = `
       <span class="metric"><span class="metric-value">${tokPerSec.toFixed(1)}</span> tok/s</span>
       <span class="metric-separator">&middot;</span>
@@ -441,13 +479,14 @@ async function processFrame(frame: CapturedFrame, prompt: string, maxTokens: num
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[Vision] VLM failed:', msg);
+    console.error("[Vision] VLM failed:", msg);
 
     // WASM runtime crashes (OOB, etc.) trigger auto-recovery in the bridge.
     // Show a brief "recovering" message and let the next live frame retry.
-    const isWasmCrash = msg.includes('memory access out of bounds') ||
-                        msg.includes('unreachable') ||
-                        msg.includes('RuntimeError');
+    const isWasmCrash =
+      msg.includes("memory access out of bounds") ||
+      msg.includes("unreachable") ||
+      msg.includes("RuntimeError");
 
     if (isWasmCrash) {
       descriptionEl.innerHTML = `<span class="text-secondary">Recovering from memory error... Next frame will retry.</span>`;
@@ -462,11 +501,11 @@ async function processFrame(frame: CapturedFrame, prompt: string, maxTokens: num
 
   if (tickerId) clearInterval(tickerId);
   isProcessing = false;
-  processingOverlay.classList.add('hidden');
+  processingOverlay.classList.add("hidden");
 
   // Reset overlay text for next use
-  const timerSpanReset = processingOverlay.querySelector('span');
-  if (timerSpanReset) timerSpanReset.textContent = 'Analyzing...';
+  const timerSpanReset = processingOverlay.querySelector("span");
+  if (timerSpanReset) timerSpanReset.textContent = "Analyzing...";
 }
 
 // ---------------------------------------------------------------------------
@@ -476,7 +515,7 @@ async function processFrame(frame: CapturedFrame, prompt: string, maxTokens: num
 function copyDescription(): void {
   if (!currentDescription) return;
   navigator.clipboard.writeText(currentDescription).then(() => {
-    console.log('[Vision] Description copied to clipboard');
+    console.log("[Vision] Description copied to clipboard");
   });
 }
 
@@ -485,5 +524,5 @@ function copyDescription(): void {
 // ---------------------------------------------------------------------------
 
 function escapeHtml(str: string): string {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
